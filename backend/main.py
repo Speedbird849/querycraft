@@ -4,3 +4,6 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
+@app.get("/")
+def root():
+    return "default"
