@@ -1,49 +1,60 @@
 # QueryCraft
 
-Minimal scaffold to run a React frontend (Vite) with a FastAPI backend.
+A lightweight desktop database GUI built with Electron.
 
-## Backend (FastAPI)
+Supports **PostgreSQL**, **MySQL**, and **SQLite**.
 
-1. Create a Python environment (recommended):
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-```
-
-2. Install dependencies:
+## Setup
 
 ```bash
-pip install -r backend/requirements.txt
-```
-
-3. Run backend:
-
-```bash
-uvicorn backend.main:app --reload --port 8000
-```
-
-The backend exposes:
-- `GET /` - simple health message
-- `POST /query` - accepts JSON `{ "query": "..." }` and returns a sample table
-
-## Frontend (React + Vite)
-
-1. Change to the `frontend` folder and install:
-
-```bash
-cd frontend
+# 1. Install dependencies
 npm install
+
+# 2. Run in development
+npm start
 ```
 
-2. Run the dev server:
+## Project structure
 
-```bash
-npm run dev
+```
+querycraft/
+├── main.js          ← Electron main process (Node.js)
+│                      Creates the window, handles all DB connections via IPC
+├── preload.js       ← Secure bridge — exposes window.db to the renderer
+├── renderer/
+│   ├── index.html   ← UI shell
+│   ├── styles.css   ← All styles
+│   └── app.js       ← All UI logic (vanilla JS)
+└── package.json
 ```
 
-The frontend will run at `http://localhost:5173` and communicates with the backend at `http://localhost:8000`.
+## How the layers talk to each other
 
-Notes:
-- This scaffold intentionally excludes Tailwind and AI features for now.
-- Replace the placeholder `/query` implementation in `backend/main.py` with real DB logic when ready.
+```
+renderer/app.js
+  └── calls window.db.query(sql)          ← defined by preload.js
+        └── ipcRenderer.invoke('db:query')
+              └── ipcMain.handle('db:query') ← in main.js
+                    └── runs SQL via pg / mysql2 / better-sqlite3
+                          └── returns result back up the chain
+```
+
+## Connecting
+
+- **PostgreSQL:** `postgres://user:password@localhost:5432/dbname`
+- **MySQL:**      `mysql://user:password@localhost:3306/dbname`
+- **SQLite:**     `/absolute/path/to/file.db`
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Run query | Cmd/Ctrl + Enter |
+
+## Next steps
+
+- [ ] Add NL-to-SQL via Claude API
+- [ ] Inline cell editing
+- [ ] Export results as CSV
+- [ ] Multiple connection tabs
+- [ ] Query formatting / syntax highlighting

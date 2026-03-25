@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'" />
+  <title>QueryCraft</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+
+  <!-- ── TOPBAR ── -->
+  <header class="topbar">
+    <!-- macOS traffic light spacer (titleBarStyle: hiddenInset) -->
+    <div class="traffic-light-spacer"></div>
+
+    <div class="logo">Query<span>Craft</span></div>
+
+    <div class="topbar-sep"></div>
+
+    <!-- Connection status badge — changes on connect/disconnect -->
+    <div class="db-badge" id="dbBadge">
+      <div class="db-dot disconnected" id="dbDot"></div>
+      <span id="dbLabel">Not connected</span>
+    </div>
+
+    <!-- Connect / Disconnect button -->
+    <button class="topbar-btn" id="connectBtn">Connect</button>
+  </header>
+
+
+  <!-- ── CONNECT MODAL (hidden by default) ── -->
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">New Connection</span>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field-group">
+          <label class="field-label">Database type</label>
+          <div class="driver-tabs">
+            <button class="driver-tab active" data-driver="postgres">PostgreSQL</button>
+            <button class="driver-tab" data-driver="mysql">MySQL</button>
+            <button class="driver-tab" data-driver="sqlite">SQLite</button>
+          </div>
+        </div>
+
+        <!-- Postgres / MySQL -->
+        <div class="field-group" id="connStringGroup">
+          <label class="field-label">Connection string</label>
+          <input
+            class="field-input mono"
+            id="connStringInput"
+            type="text"
+            placeholder="postgres://user:pass@localhost:5432/mydb"
+          />
+          <span class="field-hint">Paste your full connection URI</span>
+        </div>
+
+        <!-- SQLite file path -->
+        <div class="field-group hidden" id="fileGroup">
+          <label class="field-label">Database file path</label>
+          <div class="file-row">
+            <input class="field-input mono" id="filePathInput" type="text" placeholder="/path/to/database.db" />
+            <button class="file-browse-btn" id="fileBrowseBtn">Browse</button>
+          </div>
+        </div>
+
+        <div class="modal-error hidden" id="modalError"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-ghost" id="modalCancel">Cancel</button>
+        <button class="btn-primary" id="modalConnect">Connect →</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+
+    <!-- Schema section -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Schema</div>
+      <div id="schemaList">
+        <!-- Populated by JS: schema-table divs go here -->
+        <div class="sidebar-empty">No connection</div>
+      </div>
+    </div>
+
+    <!-- History section -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">History</div>
+      <div id="historyList">
+        <!-- Populated by JS -->
+        <div class="sidebar-empty">No queries yet</div>
+      </div>
+    </div>
+
+  </aside>
+
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+
+    <!-- Filter bar (TablePlus-style, hidden until a table is selected) -->
+    <div class="filter-bar hidden" id="filterBar">
+      <div class="filter-row" id="filterRows">
+        <!-- Filter pills added by JS -->
+      </div>
+      <div class="filter-actions">
+        <button class="filter-btn" id="addFilterBtn">+ Filter</button>
+        <button class="filter-btn" id="clearFiltersBtn">Clear</button>
+        <span class="filter-sep"></span>
+        <button class="filter-btn accent" id="applyFiltersBtn">Apply All</button>
+      </div>
+    </div>
+
+    <!-- Query / AI input zone -->
+    <div class="query-zone">
+      <div class="query-label">Ask a question</div>
+      <div class="query-row">
+        <textarea
+          class="query-input"
+          id="queryInput"
+          rows="2"
+          placeholder="e.g. Show the top 10 customers by total spend in the last 30 days"
+        ></textarea>
+        <button class="run-btn" id="runBtn">Run →</button>
+      </div>
+    </div>
+
+    <!-- Output area -->
+    <div class="output-area" id="outputArea">
+
+      <!-- STATE: empty -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">{ }</div>
+        <div class="empty-text">Connect to a database and run a query</div>
+      </div>
+
+      <!-- STATE: SQL panel (hidden until query runs) -->
+      <div class="panel hidden" id="sqlPanel">
+        <div class="panel-head">
+          <span class="panel-title">Generated SQL</span>
+          <span class="badge badge-safe" id="sqlBadge">✓ safe</span>
+        </div>
+        <div class="sql-body" id="sqlBody"></div>
+      </div>
+
+      <!-- STATE: Results panel (hidden until query runs) -->
+      <div class="panel hidden" id="resultsPanel">
+        <div class="panel-head">
+          <span class="panel-title">Results</span>
+        </div>
+        <div class="results-scroll">
+          <table id="resultsTable">
+            <thead id="resultsHead"></thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+        <div class="results-footer" id="resultsFooter"></div>
+      </div>
+
+      <!-- STATE: Error panel (hidden until a blocked/failed query) -->
+      <div class="panel hidden" id="errorPanel">
+        <div class="panel-head">
+          <span class="panel-title">Error</span>
+          <span class="badge badge-blocked">blocked</span>
+        </div>
+        <div class="error-body" id="errorBody"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── STATUSBAR ── -->
+  <footer class="statusbar">
+    <span id="statusMsg">Ready</span>
+    <span class="statusbar-sep"></span>
+    <span id="statusDriver"></span>
+  </footer>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
