@@ -1,0 +1,14 @@
+* { box-sizing: border-box; }
+body, html, #root { height: 100%; margin: 0; font-family: Arial, Helvetica, sans-serif; }
+.navbar { background:#111; color: #fff; padding: 12px 16px; }
+.content { display: flex; height: calc(100% - 48px); }
+.sidebar { width: 180px; background:#f5f5f5; padding: 16px; }
+.sidebar ul { padding-left: 16px; }
+.main { flex: 1; padding: 24px; }
+.field { display:flex; gap:8px; max-width:720px; }
+.field input { flex:1; padding:10px; font-size:16px; }
+.field button { padding: 10px 14px; }
+.results { margin-top:18px; }
+table { border-collapse: collapse; width:100%; }
+th, td { border:1px solid #ddd; padding:8px; }
+.error { color: red; }
