@@ -1,0 +1,14 @@
+body {
+    background-color: rgb(35, 30, 40);
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: white;
+}
+
+.navbar {
+    background-color: rgb(55, 55, 65);
+    text-align: center;
+    margin: 15px 3px 0px 3px;
+    padding-top: 0.5px;
+    padding-bottom: 0.5px;
+    border-radius: 15px;
+}
