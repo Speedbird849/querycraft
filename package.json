@@ -8,7 +8,7 @@
     "dev": "electron . --inspect"
   },
   "dependencies": {
-    "better-sqlite3": "^9.4.3",
+    "sql.js": "^1.10.3",
     "pg": "^8.11.3",
     "mysql2": "^3.9.1"
   },
