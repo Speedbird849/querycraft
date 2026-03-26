@@ -1,11 +1,3 @@
-/**
- * preload.js
- *
- * Runs in a privileged context with access to both Node APIs and the DOM.
- * We use contextBridge to expose a clean, minimal API to the renderer —
- * the renderer never touches Node or Electron directly.
- */
-
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('db', {

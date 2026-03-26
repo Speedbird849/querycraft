@@ -12,7 +12,6 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: 'hiddenInset',   // macOS: traffic lights inset into your topbar
     backgroundColor: '#0e1014',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
