@@ -184,6 +184,8 @@ function setConnected(yes) {
   dbDot.className = 'db-dot ' + (yes ? 'connected' : 'disconnected')
   dbLabel.textContent = yes ? state.dbName : 'Not connected'
   connectBtn.textContent = yes ? 'Disconnect' : 'Connect'
+  connectBtn.classList.toggle('btn-disconnect', yes)
+  connectBtn.classList.toggle('btn-connect', !yes)
   statusDriver.textContent = yes ? state.driver : ''
   setStatus(yes ? `Connected to ${state.dbName}` : 'Ready')
 }

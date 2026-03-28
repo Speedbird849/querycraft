@@ -65,6 +65,13 @@ ipcMain.handle('db:connect', async (_event, { driver, connectionString }) => {
       activeDriver = 'mysql'
 
     } else if (driver === 'sqlite') {
+      //
+      // sql.js works differently from better-sqlite3:
+      //   - Pure JavaScript — no C++ compilation needed (solves the Windows build error)
+      //   - Loads the entire .db file into memory as a byte array
+      //   - Queries run against that in-memory copy
+      //   - The file on disk is NOT modified unless you explicitly write it back
+      //
       const fs = require('fs')
       const initSqlJs = require('sql.js')
 

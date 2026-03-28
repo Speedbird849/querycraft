@@ -92,6 +92,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   transition: all 0.15s;
 }
 .topbar-btn:hover { background: var(--surface2); color: var(--text); }
+.topbar-btn.btn-connect    { border-color: rgba(74,222,128,0.35); color: rgba(74,222,128,0.8); }
+.topbar-btn.btn-connect:hover    { background: rgba(74,222,128,0.08); color: var(--accent); }
+.topbar-btn.btn-disconnect { border-color: rgba(248,113,113,0.35); color: rgba(248,113,113,0.8); }
+.topbar-btn.btn-disconnect:hover { background: rgba(248,113,113,0.08); color: var(--danger); }
 
 /* ══ MODAL ══ */
 .modal-overlay {
