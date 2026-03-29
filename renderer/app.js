@@ -102,11 +102,35 @@ const DRIVER_DEFAULTS = {
 }
 
 // Open modal — reset fields to defaults for the current driver
+let disconnectTimer = null
+
 connectBtn.addEventListener('click', () => {
-  if (state.connected) {
+  if (!state.connected) {
+    openModal()
+    return
+  }
+
+  if (connectBtn.dataset.confirming === 'true') {
+    // Second click — confirmed, actually disconnect
+    clearTimeout(disconnectTimer)
+    connectBtn.dataset.confirming = 'false'
     handleDisconnect()
   } else {
-    openModal()
+    // First click — enter confirm state
+    connectBtn.dataset.confirming = 'true'
+    connectBtn.textContent = 'Confirm?'
+    connectBtn.classList.remove('btn-disconnect')
+    connectBtn.classList.add('btn-confirm')
+
+    // Reset back to Disconnect after 5 seconds if not confirmed
+    disconnectTimer = setTimeout(() => {
+      if (connectBtn.dataset.confirming === 'true') {
+        connectBtn.dataset.confirming = 'false'
+        connectBtn.textContent = 'Disconnect'
+        connectBtn.classList.remove('btn-confirm')
+        connectBtn.classList.add('btn-disconnect')
+      }
+    }, 5000)
   }
 })
 
