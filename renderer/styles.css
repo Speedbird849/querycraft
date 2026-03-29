@@ -501,7 +501,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   margin-bottom: 8px;
 }
 
-.query-row { display: flex; gap: 10px; align-items: center; }
+.query-row { display: flex; gap: 10px; align-items: flex-start; }
 
 .query-input {
   flex: 1;
@@ -526,7 +526,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 .run-btn {
   padding: 0 18px;
-  height: 40px;
+  height: 43px;
   border-radius: var(--r-lg);
   border: none;
   background: var(--accent);
@@ -537,7 +537,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   white-space: nowrap;
   flex-shrink: 0;
   transition: opacity 0.15s;
-  align-self: flex-end;
+  align-self: flex-start;
 }
 .run-btn:hover { opacity: 0.85; }
 .run-btn:active { opacity: 0.7; }
