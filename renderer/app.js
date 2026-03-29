@@ -301,9 +301,29 @@ async function handleDisconnect() {
   state.columns = {}
   state.activeTable = null
   state.filters = []
+  state.queryHistory = []
+
   setConnected(false)
+
+  // Clear sidebar
   schemaList.innerHTML = '<div class="sidebar-empty">No connection</div>'
+  historyList.innerHTML = '<div class="sidebar-empty">No queries yet</div>'
+
+  // Clear filter bar
   filterBar.classList.add('hidden')
+  filterRows.innerHTML = ''
+
+  // Reset output area back to empty state
+  sqlPanel.classList.add('hidden')
+  resultsPanel.classList.add('hidden')
+  errorPanel.classList.add('hidden')
+  emptyState.classList.remove('hidden')
+  sqlBody.textContent = ''
+  resultsHead.innerHTML = ''
+  resultsBody.innerHTML = ''
+  resultsFooter.innerHTML = ''
+  queryInput.value = ''
+
   setStatus('Disconnected')
 }
 
@@ -311,6 +331,8 @@ function setConnected(yes) {
   dbDot.className = 'db-dot ' + (yes ? 'connected' : 'disconnected')
   dbLabel.textContent = yes ? state.dbName : 'Not connected'
   connectBtn.textContent = yes ? 'Disconnect' : 'Connect'
+  connectBtn.dataset.confirming = 'false'
+  connectBtn.classList.remove('btn-confirm')
   connectBtn.classList.toggle('btn-disconnect', yes)
   connectBtn.classList.toggle('btn-connect', !yes)
   statusDriver.textContent = yes ? state.driver : ''
