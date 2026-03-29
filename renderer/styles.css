@@ -517,6 +517,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   resize: none;
   outline: none;
   transition: border-color 0.15s;
+  overflow-y: hidden;
+  min-height: 40px;
+  max-height: 200px;
 }
 .query-input:focus { border-color: rgba(74,222,128,0.35); }
 .query-input::placeholder { color: var(--faint); }

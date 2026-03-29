@@ -323,6 +323,7 @@ async function handleDisconnect() {
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
   queryInput.value = ''
+  queryInput.style.height = 'auto'
 
   setStatus('Disconnected')
 }
@@ -547,6 +548,12 @@ function applyFilters() {
 /* ══════════════════════════════════════════
    6. QUERY RUNNER
 ══════════════════════════════════════════ */
+
+// Auto-resize textarea as content grows
+queryInput.addEventListener('input', () => {
+  queryInput.style.height = 'auto'
+  queryInput.style.height = queryInput.scrollHeight + 'px'
+})
 
 runBtn.addEventListener('click', () => {
   const sql = queryInput.value.trim()
