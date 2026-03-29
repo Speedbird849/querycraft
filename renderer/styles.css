@@ -165,6 +165,57 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 .field-hint { font-size: 11px; color: var(--faint); }
 
+/* Side-by-side field pairs (host+port, user+password) */
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+.field-grow { flex: 1; }
+.field-port { width: 90px; flex-shrink: 0; }
+
+/* SSL / checkbox row */
+.field-check-row { display: flex; align-items: center; gap: 16px; }
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.check-label input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.check-label:hover { color: var(--text); }
+
+/* Live connection string preview */
+.conn-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-top: 2px;
+}
+.conn-preview-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.conn-preview-value {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
 .file-row { display: flex; gap: 8px; }
 .file-browse-btn {
   padding: 9px 14px;

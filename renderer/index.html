@@ -14,6 +14,8 @@
 
   <!-- ── TOPBAR ── -->
   <header class="topbar">
+    <!-- macOS traffic light spacer (titleBarStyle: hiddenInset) -->
+    <div class="traffic-light-spacer"></div>
 
     <div class="logo">Query<span>Craft</span></div>
 
@@ -39,6 +41,8 @@
       </div>
 
       <div class="modal-body">
+
+        <!-- Driver tabs -->
         <div class="field-group">
           <label class="field-label">Database type</label>
           <div class="driver-tabs">
@@ -48,24 +52,67 @@
           </div>
         </div>
 
-        <!-- Postgres / MySQL -->
-        <div class="field-group" id="connStringGroup">
-          <label class="field-label">Connection string</label>
-          <input
-            class="field-input mono"
-            id="connStringInput"
-            type="text"
-            placeholder="postgres://user:pass@localhost:5432/mydb"
-          />
-          <span class="field-hint">Paste your full connection URI</span>
+        <!-- Postgres / MySQL fields -->
+        <div id="hostFields">
+
+          <!-- Row 1: Host + Port -->
+          <div class="field-row">
+            <div class="field-group field-grow">
+              <label class="field-label">Host</label>
+              <input class="field-input" id="fieldHost" type="text" placeholder="localhost" />
+            </div>
+            <div class="field-group field-port">
+              <label class="field-label">Port</label>
+              <input class="field-input mono" id="fieldPort" type="text" placeholder="5432" />
+            </div>
+          </div>
+
+          <!-- Row 2: Database name -->
+          <div class="field-group">
+            <label class="field-label">Database</label>
+            <input class="field-input" id="fieldDatabase" type="text" placeholder="my_database" />
+          </div>
+
+          <!-- Row 3: Username + Password -->
+          <div class="field-row">
+            <div class="field-group field-grow">
+              <label class="field-label">Username</label>
+              <input class="field-input" id="fieldUser" type="text" placeholder="postgres" />
+            </div>
+            <div class="field-group field-grow">
+              <label class="field-label">Password</label>
+              <input class="field-input" id="fieldPassword" type="password" placeholder="••••••••" />
+            </div>
+          </div>
+
+          <!-- Row 4: SSL toggle -->
+          <div class="field-group">
+            <label class="field-label">Options</label>
+            <div class="field-check-row">
+              <label class="check-label">
+                <input type="checkbox" id="fieldSSL" />
+                <span>Use SSL</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Connection string preview -->
+          <div class="conn-preview">
+            <span class="conn-preview-label">Connection string</span>
+            <span class="conn-preview-value mono" id="connPreview">postgres://localhost:5432/</span>
+          </div>
+
         </div>
 
         <!-- SQLite file path -->
-        <div class="field-group hidden" id="fileGroup">
-          <label class="field-label">Database file path</label>
-          <div class="file-row">
-            <input class="field-input mono" id="filePathInput" type="text" placeholder="/path/to/database.db" />
-            <button class="file-browse-btn" id="fileBrowseBtn">Browse</button>
+        <div class="hidden" id="fileGroup">
+          <div class="field-group">
+            <label class="field-label">Database file</label>
+            <div class="file-row">
+              <input class="field-input mono" id="filePathInput" type="text" placeholder="C:\path\to\database.db" />
+              <button class="file-browse-btn" id="fileBrowseBtn">Browse</button>
+            </div>
+            <span class="field-hint">Select an existing .db or .sqlite file</span>
           </div>
         </div>
 

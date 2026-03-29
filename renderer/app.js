@@ -32,11 +32,18 @@ const modalClose     = document.getElementById('modalClose')
 const modalCancel    = document.getElementById('modalCancel')
 const modalConnect   = document.getElementById('modalConnect')
 const modalError     = document.getElementById('modalError')
-const connStringInput= document.getElementById('connStringInput')
-const filePathInput  = document.getElementById('filePathInput')
-const connStringGroup= document.getElementById('connStringGroup')
+const hostFields     = document.getElementById('hostFields')
 const fileGroup      = document.getElementById('fileGroup')
+const filePathInput  = document.getElementById('filePathInput')
 const driverTabs     = document.querySelectorAll('.driver-tab')
+// Individual connection fields
+const fieldHost      = document.getElementById('fieldHost')
+const fieldPort      = document.getElementById('fieldPort')
+const fieldDatabase  = document.getElementById('fieldDatabase')
+const fieldUser      = document.getElementById('fieldUser')
+const fieldPassword  = document.getElementById('fieldPassword')
+const fieldSSL       = document.getElementById('fieldSSL')
+const connPreview    = document.getElementById('connPreview')
 
 const schemaList     = document.getElementById('schemaList')
 const historyList    = document.getElementById('historyList')
@@ -84,7 +91,14 @@ const state = {
    3. CONNECTION MODAL
 ══════════════════════════════════════════ */
 
-// Open modal
+// Default values per driver
+const DRIVER_DEFAULTS = {
+  postgres: { host: 'localhost', port: '5432', user: 'postgres' },
+  mysql:    { host: 'localhost', port: '3306', user: 'root'     },
+  sqlite:   {}
+}
+
+// Open modal — reset fields to defaults for the current driver
 connectBtn.addEventListener('click', () => {
   if (state.connected) {
     handleDisconnect()
@@ -100,12 +114,25 @@ modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) c
 function openModal() {
   modalOverlay.classList.remove('hidden')
   hideModalError()
-  connStringInput.value = ''
-  connStringInput.focus()
+  applyDriverDefaults(state.driver)
+  updatePreview()
+  fieldHost.focus()
 }
 
 function closeModal() {
   modalOverlay.classList.add('hidden')
+}
+
+// Fill placeholder text with the defaults for the selected driver.
+// We use placeholders rather than pre-filling the value so the field
+// reads as empty — the default only applies if the user leaves it blank.
+function applyDriverDefaults(driver) {
+  const d = DRIVER_DEFAULTS[driver] || {}
+  fieldHost.placeholder     = d.host || 'localhost'
+  fieldPort.placeholder     = d.port || ''
+  fieldUser.placeholder     = d.user || ''
+  fieldDatabase.placeholder = 'my_database'
+  fieldPassword.placeholder = '••••••••'
 }
 
 // Driver tab switching
@@ -116,31 +143,72 @@ driverTabs.forEach(tab => {
     state.driver = tab.dataset.driver
 
     if (state.driver === 'sqlite') {
-      connStringGroup.classList.add('hidden')
+      hostFields.classList.add('hidden')
       fileGroup.classList.remove('hidden')
-      connStringInput.placeholder = ''
     } else {
-      connStringGroup.classList.remove('hidden')
+      hostFields.classList.remove('hidden')
       fileGroup.classList.add('hidden')
-      connStringInput.placeholder =
-        state.driver === 'postgres'
-          ? 'postgres://user:pass@localhost:5432/mydb'
-          : 'mysql://user:pass@localhost:3306/mydb'
+      applyDriverDefaults(state.driver)
+      updatePreview()
     }
   })
 })
 
-// Connect button in modal
+// Live preview — rebuild the connection string as the user types
+;[fieldHost, fieldPort, fieldDatabase, fieldUser, fieldPassword, fieldSSL].forEach(el => {
+  el.addEventListener('input',  updatePreview)
+  el.addEventListener('change', updatePreview)
+})
+
+function updatePreview() {
+  connPreview.textContent = buildConnectionString()
+}
+
+// Build the connection string from the current field values,
+// falling back to placeholder defaults for any field left empty.
+function buildConnectionString() {
+  const driver = state.driver
+  const d      = DRIVER_DEFAULTS[driver] || {}
+
+  const host = fieldHost.value.trim()     || d.host || 'localhost'
+  const port = fieldPort.value.trim()     || d.port || ''
+  const db   = fieldDatabase.value.trim() || ''
+  const user = fieldUser.value.trim()     || d.user || ''
+  const pass = fieldPassword.value.trim() || ''
+  const ssl  = fieldSSL.checked
+
+  const scheme = driver === 'mysql' ? 'mysql' : 'postgres'
+
+  let str = `${scheme}://`
+  if (user)       str += user
+  if (pass)       str += `:${pass}`
+  if (user || pass) str += '@'
+  str += host
+  if (port)       str += `:${port}`
+  str += `/${db}`
+  if (ssl)        str += '?sslmode=require'
+
+  return str
+}
+
+// Connect button
 modalConnect.addEventListener('click', handleConnect)
-connStringInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnect() })
+fieldPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnect() })
 
 async function handleConnect() {
+  // For SQLite, use the file path directly
+  // For everything else, build the connection string from the fields
   const connString = state.driver === 'sqlite'
     ? filePathInput.value.trim()
-    : connStringInput.value.trim()
+    : buildConnectionString()
 
-  if (!connString) {
-    showModalError('Please enter a connection string.')
+  if (state.driver === 'sqlite' && !connString) {
+    showModalError('Please enter a file path.')
+    return
+  }
+
+  if (state.driver !== 'sqlite' && !fieldDatabase.value.trim()) {
+    showModalError('Please enter a database name.')
     return
   }
 
@@ -158,8 +226,7 @@ async function handleConnect() {
     return
   }
 
-  // Extract db name from connection string for display
-  state.dbName = extractDbName(connString, state.driver)
+  state.dbName    = fieldDatabase.value.trim() || filePathInput.value.split('\\').pop().split('/').pop()
   state.connected = true
 
   closeModal()
