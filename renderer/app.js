@@ -44,6 +44,9 @@ const fieldUser      = document.getElementById('fieldUser')
 const fieldPassword  = document.getElementById('fieldPassword')
 const fieldSSL       = document.getElementById('fieldSSL')
 const connPreview    = document.getElementById('connPreview')
+const pasteConnBtn   = document.getElementById('pasteConnBtn')
+const rawConnGroup   = document.getElementById('rawConnGroup')
+const rawConnInput   = document.getElementById('rawConnInput')
 
 const schemaList     = document.getElementById('schemaList')
 const historyList    = document.getElementById('historyList')
@@ -121,6 +124,11 @@ function openModal() {
 
 function closeModal() {
   modalOverlay.classList.add('hidden')
+  // Reset paste mode on close
+  pasteMode = false
+  pasteConnBtn.classList.remove('active')
+  rawConnGroup.classList.add('hidden')
+  rawConnInput.value = ''
 }
 
 // Fill placeholder text with the defaults for the selected driver.
@@ -155,9 +163,35 @@ driverTabs.forEach(tab => {
 })
 
 // Live preview — rebuild the connection string as the user types
-;[fieldHost, fieldPort, fieldDatabase, fieldUser, fieldPassword, fieldSSL].forEach(el => {
+;[fieldHost, fieldPort, fieldDatabase, fieldUser, fieldPassword].forEach(el => {
   el.addEventListener('input',  updatePreview)
   el.addEventListener('change', updatePreview)
+})
+
+// SSL toggle button — flip data-active and update preview
+fieldSSL.addEventListener('click', () => {
+  const active = fieldSSL.dataset.active === 'true'
+  fieldSSL.dataset.active = String(!active)
+  fieldSSL.classList.toggle('active', !active)
+  updatePreview()
+})
+
+// Paste mode — toggle the raw connection string input
+let pasteMode = false
+pasteConnBtn.addEventListener('click', () => {
+  pasteMode = !pasteMode
+  pasteConnBtn.classList.toggle('active', pasteMode)
+  rawConnGroup.classList.toggle('hidden', !pasteMode)
+  if (pasteMode) {
+    rawConnInput.value = buildConnectionString()
+    rawConnInput.focus()
+    rawConnInput.select()
+  }
+})
+
+// Keep preview in sync when typing into the raw input
+rawConnInput.addEventListener('input', () => {
+  connPreview.textContent = rawConnInput.value || buildConnectionString()
 })
 
 function updatePreview() {
@@ -175,7 +209,7 @@ function buildConnectionString() {
   const db   = fieldDatabase.value.trim() || ''
   const user = fieldUser.value.trim()     || d.user || ''
   const pass = fieldPassword.value.trim() || ''
-  const ssl  = fieldSSL.checked
+  const ssl  = fieldSSL.dataset.active === 'true'
 
   const scheme = driver === 'mysql' ? 'mysql' : 'postgres'
 
@@ -200,7 +234,9 @@ async function handleConnect() {
   // For everything else, build the connection string from the fields
   const connString = state.driver === 'sqlite'
     ? filePathInput.value.trim()
-    : buildConnectionString()
+    : (pasteMode && rawConnInput.value.trim())
+      ? rawConnInput.value.trim()
+      : buildConnectionString()
 
   if (state.driver === 'sqlite' && !connString) {
     showModalError('Please enter a file path.')

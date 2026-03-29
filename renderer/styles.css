@@ -54,7 +54,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .topbar button, .topbar input { -webkit-app-region: no-drag; }
 
 /* Space for macOS traffic lights (close/minimize/maximize) */
-.traffic-light-spacer { width: 72px; flex-shrink: 0; }
 
 .logo { font-size: 15px; font-weight: 500; letter-spacing: -0.2px; color: var(--text); }
 .logo span { color: var(--accent); }
@@ -141,13 +140,38 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   padding: 14px 18px;
   border-top: 1px solid var(--border);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+}
+.modal-footer-left { display: flex; align-items: center; }
+.modal-footer-right { display: flex; align-items: center; gap: 8px; }
+.btn-subtle {
+  padding: 7px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-subtle:hover { border-color: var(--border2); color: var(--text); }
+.btn-subtle.active { border-color: rgba(74,222,128,0.3); color: var(--accent); background: rgba(74,222,128,0.07); }
+
+/* Raw connection string input (shown when paste mode is active) */
+.raw-conn-group {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 4px;
 }
 
 .field-group { display: flex; flex-direction: column; gap: 6px; }
 
-.field-label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.field-label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; }
 
 .field-input {
   background: var(--surface2);
@@ -174,22 +198,28 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .field-port { width: 90px; flex-shrink: 0; }
 
 /* SSL / checkbox row */
-.field-check-row { display: flex; align-items: center; gap: 16px; }
-.check-label {
+.field-check-row { display: flex; align-items: center; gap: 8px; }
+
+.ssl-toggle {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--border2);
+  background: var(--bg);
   color: var(--muted);
+  font-size: 12px;
   cursor: pointer;
+  transition: all 0.15s;
   user-select: none;
 }
-.check-label input[type="checkbox"] {
-  width: 14px; height: 14px;
-  accent-color: var(--accent);
-  cursor: pointer;
+.ssl-toggle:hover { border-color: var(--border2); color: var(--text); }
+.ssl-toggle.active {
+  background: rgba(74,222,128,0.1);
+  border-color: rgba(74,222,128,0.35);
+  color: var(--accent);
 }
-.check-label:hover { color: var(--text); }
 
 /* Live connection string preview */
 .conn-preview {
@@ -200,7 +230,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  margin-top: 2px;
+  margin-top: 14px;
 }
 .conn-preview-label {
   font-size: 10px;

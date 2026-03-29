@@ -14,9 +14,6 @@
 
   <!-- ── TOPBAR ── -->
   <header class="topbar">
-    <!-- macOS traffic light spacer (titleBarStyle: hiddenInset) -->
-    <div class="traffic-light-spacer"></div>
-
     <div class="logo">Query<span>Craft</span></div>
 
     <div class="topbar-sep"></div>
@@ -89,10 +86,14 @@
           <div class="field-group">
             <label class="field-label">Options</label>
             <div class="field-check-row">
-              <label class="check-label">
-                <input type="checkbox" id="fieldSSL" />
-                <span>Use SSL</span>
-              </label>
+              <button class="ssl-toggle" id="fieldSSL" data-active="false">
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                  <rect x="4" y="1" width="5" height="4" rx="2.5" stroke="currentColor" stroke-width="1.3"/>
+                  <rect x="1.5" y="5" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+                  <circle cx="6.5" cy="8.5" r="1" fill="currentColor"/>
+                </svg>
+                <span>SSL</span>
+              </button>
             </div>
           </div>
 
@@ -116,12 +117,33 @@
           </div>
         </div>
 
+        <!-- Raw connection string input (shown when paste mode is toggled) -->
+        <div class="raw-conn-group hidden" id="rawConnGroup">
+          <div class="field-group">
+            <label class="field-label">Connection string</label>
+            <input class="field-input mono" id="rawConnInput" type="text"
+              placeholder="postgres://user:pass@localhost:5432/mydb" />
+            <span class="field-hint">Overrides the fields above when filled in</span>
+          </div>
+        </div>
+
         <div class="modal-error hidden" id="modalError"></div>
       </div>
 
       <div class="modal-footer">
-        <button class="btn-ghost" id="modalCancel">Cancel</button>
-        <button class="btn-primary" id="modalConnect">Connect →</button>
+        <div class="modal-footer-left">
+          <button class="btn-subtle" id="pasteConnBtn">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <rect x="1" y="3" width="7" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M4 3V2a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H8" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+            Paste connection string
+          </button>
+        </div>
+        <div class="modal-footer-right">
+          <button class="btn-ghost" id="modalCancel">Cancel</button>
+          <button class="btn-primary" id="modalConnect">Connect →</button>
+        </div>
       </div>
     </div>
   </div>
