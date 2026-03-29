@@ -212,6 +212,15 @@
         <div class="empty-text">Connect to a database and run a query</div>
       </div>
 
+      <!-- STATE: Schema overview (shown on connect, hidden when query runs) -->
+      <div class="hidden" id="schemaOverview">
+        <div class="schema-overview-header">
+          <span class="schema-overview-title" id="schemaOverviewTitle"></span>
+          <span class="schema-overview-hint">Double-click a table to browse it</span>
+        </div>
+        <div class="schema-grid" id="schemaGrid"></div>
+      </div>
+
       <!-- STATE: SQL panel (hidden until query runs) -->
       <div class="panel hidden" id="sqlPanel">
         <div class="panel-head">

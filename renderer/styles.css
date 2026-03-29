@@ -680,6 +680,104 @@ tbody tr:hover td { background: var(--surface2); }
 /* ══ UTILITIES ══ */
 .hidden { display: none !important; }
 
+/* ══ SCHEMA OVERVIEW GRID ══ */
+.schema-overview-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.schema-overview-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.schema-overview-hint {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.schema-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.schema-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.schema-card:hover { border-color: var(--border2); }
+.schema-card:hover .schema-card-head { background: var(--surface3); }
+
+.schema-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.schema-card-name {
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--mono);
+  color: var(--text);
+}
+.schema-card-count {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--faint);
+  background: var(--bg);
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+}
+
+.schema-card-cols {
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.schema-card-col {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+.schema-card-col-name {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.schema-card-col-type {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--faint);
+}
+.schema-card-col-pk {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(74,222,128,0.1);
+  color: var(--accent);
+  border: 1px solid rgba(74,222,128,0.2);
+}
+.schema-card-more {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--faint);
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

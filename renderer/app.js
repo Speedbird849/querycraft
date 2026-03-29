@@ -60,7 +60,10 @@ const applyFiltersBtn= document.getElementById('applyFiltersBtn')
 const queryInput     = document.getElementById('queryInput')
 const runBtn         = document.getElementById('runBtn')
 
-const emptyState     = document.getElementById('emptyState')
+const emptyState       = document.getElementById('emptyState')
+const schemaOverview   = document.getElementById('schemaOverview')
+const schemaOverviewTitle = document.getElementById('schemaOverviewTitle')
+const schemaGrid       = document.getElementById('schemaGrid')
 const sqlPanel       = document.getElementById('sqlPanel')
 const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
@@ -317,6 +320,8 @@ async function handleDisconnect() {
   sqlPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
+  schemaOverview.classList.add('hidden')
+  schemaGrid.innerHTML = ''
   emptyState.classList.remove('hidden')
   sqlBody.textContent = ''
   resultsHead.innerHTML = ''
@@ -383,7 +388,46 @@ async function loadSchema() {
     schemaList.appendChild(buildTableNode(table, state.columns[table]))
   }
 
+  renderSchemaOverview(result.tables)
   setStatus(`${result.tables.length} tables loaded`)
+}
+
+function renderSchemaOverview(tables) {
+  schemaOverviewTitle.textContent = `${state.dbName} — ${tables.length} table${tables.length !== 1 ? 's' : ''}`
+  schemaGrid.innerHTML = ''
+
+  for (const table of tables) {
+    const cols = state.columns[table] || []
+    const preview = cols.slice(0, 5)
+    const extra   = cols.length - preview.length
+
+    const card = document.createElement('div')
+    card.className = 'schema-card'
+    card.innerHTML = `
+      <div class="schema-card-head">
+        <span class="schema-card-name">${table}</span>
+        <span class="schema-card-count">${cols.length} col${cols.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="schema-card-cols">
+        ${preview.map(col => `
+          <div class="schema-card-col">
+            <span class="schema-card-col-name">${col.column_name}</span>
+            ${col.is_pk
+              ? '<span class="schema-card-col-pk">PK</span>'
+              : `<span class="schema-card-col-type">${col.data_type}</span>`}
+          </div>
+        `).join('')}
+        ${extra > 0 ? `<div class="schema-card-more">+${extra} more column${extra !== 1 ? 's' : ''}</div>` : ''}
+      </div>
+    `
+
+    card.addEventListener('dblclick', () => selectTable(table))
+    schemaGrid.appendChild(card)
+  }
+
+  // Show overview, hide empty state
+  emptyState.classList.add('hidden')
+  schemaOverview.classList.remove('hidden')
 }
 
 function buildTableNode(tableName, columns) {
@@ -621,18 +665,21 @@ function renderResults(fields, rows, ms) {
   resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${ms}ms</span>`
 }
 
-function showPanels(state) {
+function showPanels(mode) {
   emptyState.classList.add('hidden')
+  schemaOverview.classList.add('hidden')
   sqlPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
 
-  if (state === 'results') {
+  if (mode === 'results') {
     sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
-  } else if (state === 'error') {
+  } else if (mode === 'error') {
     errorPanel.classList.remove('hidden')
-  } else if (state === 'empty') {
+  } else if (mode === 'schema') {
+    schemaOverview.classList.remove('hidden')
+  } else if (mode === 'empty') {
     emptyState.classList.remove('hidden')
   }
   // 'loading' just shows nothing while waiting
