@@ -121,7 +121,7 @@ connectBtn.addEventListener('click', () => {
   } else {
     // First click — enter confirm state
     connectBtn.dataset.confirming = 'true'
-    connectBtn.textContent = 'Confirm?'
+    connectBtn.textContent = 'Confirm Disconnect'
     connectBtn.classList.remove('btn-disconnect')
     connectBtn.classList.add('btn-confirm')
 
