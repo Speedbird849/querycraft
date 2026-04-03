@@ -52,6 +52,7 @@ const schemaList     = document.getElementById('schemaList')
 const historyList    = document.getElementById('historyList')
 
 const filterBar      = document.getElementById('filterBar')
+const filterToggleBtn = document.getElementById('filterToggleBtn')
 const filterRows     = document.getElementById('filterRows')
 const addFilterBtn   = document.getElementById('addFilterBtn')
 const clearFiltersBtn= document.getElementById('clearFiltersBtn')
@@ -121,7 +122,7 @@ connectBtn.addEventListener('click', () => {
   } else {
     // First click — enter confirm state
     connectBtn.dataset.confirming = 'true'
-    connectBtn.textContent = 'Confirm Disconnect'
+    connectBtn.textContent = 'Confirm?'
     connectBtn.classList.remove('btn-disconnect')
     connectBtn.classList.add('btn-confirm')
 
@@ -315,6 +316,7 @@ async function handleDisconnect() {
   // Clear filter bar
   filterBar.classList.add('hidden')
   filterRows.innerHTML = ''
+  filterToggleBtn.classList.remove('active')
 
   // Reset output area back to empty state
   sqlPanel.classList.add('hidden')
@@ -421,7 +423,7 @@ function renderSchemaOverview(tables) {
       </div>
     `
 
-    card.addEventListener('dblclick', () => selectTable(table))
+    card.addEventListener('click', () => selectTable(table))
     schemaGrid.appendChild(card)
   }
 
@@ -453,17 +455,17 @@ function buildTableNode(tableName, columns) {
     </div>
   `).join('')
 
-  // Toggle column visibility on header click
+  // Single click — select table (run SELECT *)
+  // Chevron click toggles columns open/closed
   let expanded = true
-  header.addEventListener('click', () => {
-    expanded = !expanded
-    colsDiv.style.display = expanded ? 'block' : 'none'
-    header.querySelector('.tbl-chevron').textContent = expanded ? '▾' : '▸'
-  })
-
-  // Double-click table name → SELECT * from it
-  header.addEventListener('dblclick', () => {
-    selectTable(tableName)
+  header.addEventListener('click', (e) => {
+    if (e.target.classList.contains('tbl-chevron')) {
+      expanded = !expanded
+      colsDiv.style.display = expanded ? 'block' : 'none'
+      header.querySelector('.tbl-chevron').textContent = expanded ? '▾' : '▸'
+    } else {
+      selectTable(tableName)
+    }
   })
 
   wrapper.appendChild(header)
@@ -476,7 +478,6 @@ function selectTable(tableName) {
   const sql = `SELECT * FROM ${tableName} LIMIT 100;`
   queryInput.value = sql
   runQuery(sql)
-  showFilterBar(tableName)
 }
 
 
@@ -486,6 +487,7 @@ function selectTable(tableName) {
 
 function showFilterBar(tableName) {
   filterBar.classList.remove('hidden')
+  filterToggleBtn.classList.add('active')
   filterRows.innerHTML = ''
   state.filters = []
   addFilter(tableName)
@@ -555,6 +557,22 @@ function addFilter(tableName) {
   filterRows.appendChild(pill)
 }
 
+// Filter toggle button — show/hide the filter bar
+filterToggleBtn.addEventListener('click', () => {
+  const isVisible = !filterBar.classList.contains('hidden')
+  if (isVisible) {
+    filterBar.classList.add('hidden')
+    filterToggleBtn.classList.remove('active')
+  } else {
+    if (state.activeTable) {
+      showFilterBar(state.activeTable)
+    } else {
+      filterBar.classList.remove('hidden')
+    }
+    filterToggleBtn.classList.add('active')
+  }
+})
+
 addFilterBtn.addEventListener('click', () => {
   if (state.activeTable) addFilter(state.activeTable)
 })
@@ -562,6 +580,8 @@ addFilterBtn.addEventListener('click', () => {
 clearFiltersBtn.addEventListener('click', () => {
   filterRows.innerHTML = ''
   state.filters = []
+  filterBar.classList.add('hidden')
+  filterToggleBtn.classList.remove('active')
   if (state.activeTable) selectTable(state.activeTable)
 })
 
