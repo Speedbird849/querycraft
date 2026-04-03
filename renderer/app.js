@@ -480,6 +480,10 @@ function buildTableNode(tableName, columns) {
       colsDiv.style.display = expanded ? 'block' : 'none'
       header.querySelector('.tbl-chevron').textContent = expanded ? '▾' : '▸'
     } else {
+      // Selecting a table from the sidebar keeps it selected and collapses details.
+      expanded = false
+      colsDiv.style.display = 'none'
+      header.querySelector('.tbl-chevron').textContent = '▸'
       selectTable(tableName)
     }
   })
