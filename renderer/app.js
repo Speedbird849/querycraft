@@ -68,10 +68,18 @@ const schemaGrid       = document.getElementById('schemaGrid')
 const sqlPanel       = document.getElementById('sqlPanel')
 const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
+const comparisonArea = document.getElementById('comparisonArea')
 const resultsPanel   = document.getElementById('resultsPanel')
 const resultsHead    = document.getElementById('resultsHead')
 const resultsBody    = document.getElementById('resultsBody')
 const resultsFooter  = document.getElementById('resultsFooter')
+const previewPanel   = document.getElementById('previewPanel')
+const previewSummary = document.getElementById('previewSummary')
+const previewHead    = document.getElementById('previewHead')
+const previewBody    = document.getElementById('previewBody')
+const previewFooter  = document.getElementById('previewFooter')
+const confirmPreviewBtn = document.getElementById('confirmPreviewBtn')
+const undoPreviewBtn = document.getElementById('undoPreviewBtn')
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
 
@@ -91,6 +99,7 @@ const state = {
   activeTable: null,
   queryHistory: [],
   filters: [],          // [ { column, operator, value, enabled } ]
+  pendingPreview: null, // { sql, targetTable }
 }
 
 /* ══════════════════════════════════════════
@@ -305,6 +314,7 @@ async function handleDisconnect() {
   state.activeTable = null
   state.filters = []
   state.queryHistory = []
+  state.pendingPreview = null
 
   setConnected(false)
 
@@ -319,6 +329,8 @@ async function handleDisconnect() {
 
   // Reset output area back to empty state
   sqlPanel.classList.add('hidden')
+  comparisonArea.classList.add('hidden')
+  previewPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
   schemaOverview.classList.add('hidden')
@@ -328,6 +340,10 @@ async function handleDisconnect() {
   resultsHead.innerHTML = ''
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
+  previewHead.innerHTML = ''
+  previewBody.innerHTML = ''
+  previewFooter.innerHTML = ''
+  previewSummary.textContent = 'Run an UPDATE, INSERT, or DELETE to preview changes.'
   queryInput.value = ''
   queryInput.style.height = 'auto'
 
@@ -630,7 +646,22 @@ queryInput.addEventListener('keydown', (e) => {
   }
 })
 
+confirmPreviewBtn.addEventListener('click', commitPreview)
+undoPreviewBtn.addEventListener('click', undoPreview)
+
 async function runQuery(sql) {
+  if (isMutatingSql(sql)) {
+    await runMutationPreview(sql)
+    return
+  }
+
+  if (state.pendingPreview) {
+    showPanels('error')
+    errorBody.textContent = 'A pending preview is open. Confirm Commit or Undo before running another query.'
+    setStatus('Pending preview needs confirmation')
+    return
+  }
+
   setStatus('Running query…')
   showPanels('loading')
   const start = Date.now()
@@ -663,12 +694,122 @@ async function runQuery(sql) {
   setStatus(`${result.rows.length} rows · ${ms}ms`)
 }
 
+async function runMutationPreview(sql) {
+  setStatus('Building preview…')
+  showPanels('loading')
+
+  const tableHint = state.activeTable || extractTargetTable(sql)
+  const result = await window.db.previewChange(sql, tableHint)
+
+  if (!result.ok) {
+    showPanels('error')
+    errorBody.textContent = result.error
+    setStatus('Preview failed')
+    return
+  }
+
+  state.pendingPreview = {
+    sql,
+    targetTable: result.targetTable || tableHint || null,
+  }
+
+  sqlBody.textContent = sql
+  sqlBadge.textContent = 'pending commit'
+  sqlBadge.className = 'badge badge-pending'
+
+  renderResults(result.beforeFields, result.beforeRows, null, 'current')
+  renderPreviewResults(result.afterFields, result.afterRows, result.affectedRows, result.targetTable)
+  showPanels('preview')
+  addHistory(sql)
+  setStatus('Preview ready. Confirm Commit to persist, or Undo to rollback.')
+}
+
+async function commitPreview() {
+  if (!state.pendingPreview) return
+
+  setPreviewButtonsDisabled(true)
+  const targetTable = state.pendingPreview.targetTable
+  const result = await window.db.commitPreview()
+  setPreviewButtonsDisabled(false)
+
+  if (!result.ok) {
+    showPanels('error')
+    errorBody.textContent = result.error
+    setStatus('Commit failed')
+    return
+  }
+
+  state.pendingPreview = null
+  previewPanel.classList.add('hidden')
+  setStatus('Changes committed')
+
+  if (targetTable) {
+    const sql = `SELECT * FROM ${targetTable} LIMIT 100;`
+    queryInput.value = sql
+    runQuery(sql)
+  }
+}
+
+async function undoPreview() {
+  if (!state.pendingPreview) return
+
+  setPreviewButtonsDisabled(true)
+  const targetTable = state.pendingPreview.targetTable
+  const result = await window.db.undoPreview()
+  setPreviewButtonsDisabled(false)
+
+  if (!result.ok) {
+    showPanels('error')
+    errorBody.textContent = result.error
+    setStatus('Undo failed')
+    return
+  }
+
+  state.pendingPreview = null
+  previewPanel.classList.add('hidden')
+  previewSummary.textContent = 'Preview rolled back. No changes were saved.'
+  setStatus('Preview rolled back')
+
+  if (targetTable) {
+    const sql = `SELECT * FROM ${targetTable} LIMIT 100;`
+    queryInput.value = sql
+    runQuery(sql)
+  }
+}
+
+function setPreviewButtonsDisabled(disabled) {
+  confirmPreviewBtn.disabled = disabled
+  undoPreviewBtn.disabled = disabled
+}
+
+function isMutatingSql(sql) {
+  return /^\s*(insert|update|delete|alter|drop|truncate|create)\b/i.test(sql)
+}
+
+function extractTargetTable(sql) {
+  const patterns = [
+    /^\s*update\s+([`"\w.]+)/i,
+    /^\s*insert\s+into\s+([`"\w.]+)/i,
+    /^\s*delete\s+from\s+([`"\w.]+)/i,
+    /^\s*alter\s+table\s+([`"\w.]+)/i,
+    /^\s*truncate\s+table\s+([`"\w.]+)/i,
+    /^\s*drop\s+table\s+([`"\w.]+)/i,
+    /^\s*create\s+table\s+([`"\w.]+)/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = sql.match(pattern)
+    if (match && match[1]) return match[1].replace(/["`]/g, '')
+  }
+  return ''
+}
+
 
 /* ══════════════════════════════════════════
    7. RESULTS RENDERER
 ══════════════════════════════════════════ */
 
-function renderResults(fields, rows, ms) {
+function renderResults(fields, rows, ms, rightLabel = null) {
   // Header row
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
 
@@ -681,20 +822,57 @@ function renderResults(fields, rows, ms) {
     }).join('') + '</tr>'
   ).join('')
 
-  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${ms}ms</span>`
+  if (rows.length === 0) {
+    const colSpan = Math.max(fields.length, 1)
+    resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
+  }
+
+  const right = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
+  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${right}</span>`
+}
+
+function renderPreviewResults(fields, rows, affectedRows, targetTable) {
+  previewHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
+
+  previewBody.innerHTML = rows.map(row =>
+    '<tr>' + fields.map(f => {
+      const val = row[f]
+      if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
+      return `<td>${val}</td>`
+    }).join('') + '</tr>'
+  ).join('')
+
+  if (rows.length === 0) {
+    const colSpan = Math.max(fields.length, 1)
+    previewBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
+  }
+
+  previewSummary.textContent = targetTable
+    ? `Previewing staged changes on ${targetTable}.`
+    : 'Previewing staged changes.'
+  previewFooter.innerHTML = `<span>${rows.length} rows</span><span>${affectedRows || 0} affected</span>`
 }
 
 function showPanels(mode) {
   emptyState.classList.add('hidden')
   schemaOverview.classList.add('hidden')
+  comparisonArea.classList.add('hidden')
   sqlPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
+  previewPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
 
   if (mode === 'results') {
+    comparisonArea.classList.remove('hidden')
     sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
+  } else if (mode === 'preview') {
+    comparisonArea.classList.remove('hidden')
+    sqlPanel.classList.remove('hidden')
+    resultsPanel.classList.remove('hidden')
+    previewPanel.classList.remove('hidden')
   } else if (mode === 'error') {
+    comparisonArea.classList.remove('hidden')
     errorPanel.classList.remove('hidden')
   } else if (mode === 'schema') {
     schemaOverview.classList.remove('hidden')

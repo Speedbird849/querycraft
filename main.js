@@ -5,6 +5,7 @@ const path = require('path')
 let activeConnection = null   // holds the live client/db object
 let activeDriver     = null   // 'postgres' | 'mysql' | 'sqlite'
 let activeSqlitePath = null   // file path of the open sqlite db (sql.js is in-memory)
+let pendingPreview   = false  // true when a preview transaction is open
 
 // ─── Window ─────────────────────────────────────────────────────────────────
 function createWindow() {
@@ -209,51 +210,79 @@ ipcMain.handle('db:columns', async (_event, { table }) => {
 ipcMain.handle('db:query', async (_event, { sql }) => {
   if (!activeConnection) return { ok: false, error: 'Not connected' }
 
-  // Block destructive statements
-  const BLOCKED = /^\s*(drop|delete|truncate|alter|update|insert|grant|revoke|create)\b/i
-  if (BLOCKED.test(sql)) {
-    return {
-      ok: false,
-      blocked: true,
-      error: 'Destructive statements are not permitted in this mode.'
-    }
+  try {
+    const result = await executeSql(sql)
+    return { ok: true, rows: result.rows, fields: result.fields, rowCount: result.rowCount }
+  } catch (err) {
+    return { ok: false, error: err.message }
   }
+})
+
+
+// ── 6. PREVIEW A MUTATION (BEGIN + RUN + SNAPSHOT) ─────────────────────────
+ipcMain.handle('db:preview-change', async (_event, { sql, tableHint }) => {
+  if (!activeConnection) return { ok: false, error: 'Not connected' }
+  if (!isMutatingSql(sql)) return { ok: false, error: 'Only mutating SQL can be previewed.' }
 
   try {
-    let rows = [], fields = []
-
-    if (activeDriver === 'postgres') {
-      const res = await activeConnection.query(sql)
-      rows   = res.rows
-      fields = res.fields.map(f => f.name)
-
-    } else if (activeDriver === 'mysql') {
-      const [result, fieldDefs] = await activeConnection.query(sql)
-      rows   = result
-      fields = fieldDefs.map(f => f.name)
-
-    } else if (activeDriver === 'sqlite') {
-      //
-      // sql.js exec() returns: [{ columns: ['id','name',...], values: [[1,'Alice'],[2,'Bob'],...] }]
-      //
-      // We convert this into the same shape pg/mysql return — an array of plain objects:
-      //   [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }]
-      //
-      // This way app.js doesn't need to know which driver is active — it always gets the same shape.
-      //
-      const result = activeConnection.exec(sql)
-
-      if (result.length > 0) {
-        fields = result[0].columns
-        rows   = result[0].values.map(row => {
-          const obj = {}
-          fields.forEach((col, i) => { obj[col] = row[i] })
-          return obj
-        })
-      }
+    if (pendingPreview) {
+      await rollbackTransaction()
+      pendingPreview = false
     }
 
-    return { ok: true, rows, fields }
+    const targetTable = (tableHint || extractTargetTable(sql) || '').trim()
+    const before = targetTable ? await fetchTableSnapshot(targetTable) : { fields: [], rows: [] }
+
+    await beginTransaction()
+    pendingPreview = true
+
+    const execResult = await executeSql(sql)
+    const after = targetTable ? await fetchTableSnapshot(targetTable) : { fields: [], rows: [] }
+
+    return {
+      ok: true,
+      pending: true,
+      targetTable,
+      affectedRows: execResult.rowCount,
+      beforeFields: before.fields,
+      beforeRows: before.rows,
+      afterFields: after.fields,
+      afterRows: after.rows,
+    }
+  } catch (err) {
+    if (pendingPreview) {
+      try { await rollbackTransaction() } catch (_) {}
+      pendingPreview = false
+    }
+    return { ok: false, error: err.message }
+  }
+})
+
+
+// ── 7. COMMIT PREVIEWED CHANGES ─────────────────────────────────────────────
+ipcMain.handle('db:commit-preview', async () => {
+  if (!activeConnection) return { ok: false, error: 'Not connected' }
+  if (!pendingPreview) return { ok: false, error: 'No pending preview to commit.' }
+
+  try {
+    await commitTransaction()
+    pendingPreview = false
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
+
+// ── 8. UNDO PREVIEWED CHANGES ───────────────────────────────────────────────
+ipcMain.handle('db:undo-preview', async () => {
+  if (!activeConnection) return { ok: false, error: 'Not connected' }
+  if (!pendingPreview) return { ok: true }
+
+  try {
+    await rollbackTransaction()
+    pendingPreview = false
+    return { ok: true }
   } catch (err) {
     return { ok: false, error: err.message }
   }
@@ -264,6 +293,10 @@ ipcMain.handle('db:query', async (_event, { sql }) => {
 async function disconnectCurrent() {
   if (!activeConnection) return
   try {
+    if (pendingPreview) {
+      try { await rollbackTransaction() } catch (_) {}
+      pendingPreview = false
+    }
     if (activeDriver === 'postgres') await activeConnection.end()
     if (activeDriver === 'mysql')    await activeConnection.end()
     if (activeDriver === 'sqlite')   activeConnection.close()
@@ -273,4 +306,122 @@ async function disconnectCurrent() {
   activeConnection = null
   activeDriver     = null
   activeSqlitePath = null
+}
+
+function isMutatingSql(sql) {
+  return /^\s*(insert|update|delete|alter|drop|truncate|create)\b/i.test(sql)
+}
+
+function extractTargetTable(sql) {
+  const patterns = [
+    /^\s*update\s+([`"\w.]+)/i,
+    /^\s*insert\s+into\s+([`"\w.]+)/i,
+    /^\s*delete\s+from\s+([`"\w.]+)/i,
+    /^\s*alter\s+table\s+([`"\w.]+)/i,
+    /^\s*truncate\s+table\s+([`"\w.]+)/i,
+    /^\s*drop\s+table\s+([`"\w.]+)/i,
+    /^\s*create\s+table\s+([`"\w.]+)/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = sql.match(pattern)
+    if (match && match[1]) return match[1].replace(/["`]/g, '')
+  }
+  return ''
+}
+
+function quoteIdentifier(tableName) {
+  const parts = tableName.split('.').map(p => p.trim()).filter(Boolean)
+  if (parts.length === 0) throw new Error('Unable to infer target table for preview.')
+
+  if (activeDriver === 'postgres') {
+    return parts.map(p => `"${p.replace(/"/g, '""')}"`).join('.')
+  }
+  return parts.map(p => `\`${p.replace(/`/g, '``')}\``).join('.')
+}
+
+async function fetchTableSnapshot(tableName) {
+  const tableRef = quoteIdentifier(tableName)
+  return executeSql(`SELECT * FROM ${tableRef} LIMIT 100`)
+}
+
+async function beginTransaction() {
+  if (activeDriver === 'postgres' || activeDriver === 'mysql') {
+    await activeConnection.query('BEGIN')
+    return
+  }
+  if (activeDriver === 'sqlite') {
+    activeConnection.run('BEGIN TRANSACTION')
+  }
+}
+
+async function commitTransaction() {
+  if (activeDriver === 'postgres' || activeDriver === 'mysql') {
+    await activeConnection.query('COMMIT')
+    return
+  }
+  if (activeDriver === 'sqlite') {
+    activeConnection.run('COMMIT')
+  }
+}
+
+async function rollbackTransaction() {
+  if (activeDriver === 'postgres' || activeDriver === 'mysql') {
+    await activeConnection.query('ROLLBACK')
+    return
+  }
+  if (activeDriver === 'sqlite') {
+    activeConnection.run('ROLLBACK')
+  }
+}
+
+async function executeSql(sql) {
+  let rows = []
+  let fields = []
+  let rowCount = 0
+
+  if (activeDriver === 'postgres') {
+    const res = await activeConnection.query(sql)
+    rows = res.rows || []
+    fields = res.fields ? res.fields.map(f => f.name) : []
+    rowCount = typeof res.rowCount === 'number' ? res.rowCount : rows.length
+    return { rows, fields, rowCount }
+  }
+
+  if (activeDriver === 'mysql') {
+    const [result, fieldDefs] = await activeConnection.query(sql)
+    if (Array.isArray(result)) {
+      rows = result
+      fields = (fieldDefs || []).map(f => f.name)
+      rowCount = rows.length
+    } else {
+      rowCount = Number(result?.affectedRows || 0)
+    }
+    return { rows, fields, rowCount }
+  }
+
+  if (activeDriver === 'sqlite') {
+    const isRead = /^\s*(select|pragma|with)\b/i.test(sql)
+    if (isRead) {
+      const result = activeConnection.exec(sql)
+      if (result.length > 0) {
+        fields = result[0].columns
+        rows = result[0].values.map(row => {
+          const obj = {}
+          fields.forEach((col, i) => { obj[col] = row[i] })
+          return obj
+        })
+      }
+      rowCount = rows.length
+    } else {
+      activeConnection.run(sql)
+      const changed = activeConnection.exec('SELECT changes() AS affected_rows')
+      if (changed.length > 0 && changed[0].values[0]) {
+        rowCount = Number(changed[0].values[0][0] || 0)
+      }
+    }
+    return { rows, fields, rowCount }
+  }
+
+  throw new Error('Unsupported driver for query execution.')
 }

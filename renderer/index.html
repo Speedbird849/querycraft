@@ -223,35 +223,60 @@
       </div>
 
       <!-- STATE: SQL panel (hidden until query runs) -->
-      <div class="panel hidden" id="sqlPanel">
-        <div class="panel-head">
-          <span class="panel-title">Generated SQL</span>
-          <span class="badge badge-safe" id="sqlBadge">✓ safe</span>
-        </div>
-        <div class="sql-body" id="sqlBody"></div>
-      </div>
+      <div class="comparison-area hidden" id="comparisonArea">
+        <div class="comparison-grid">
 
-      <!-- STATE: Results panel (hidden until query runs) -->
-      <div class="panel hidden" id="resultsPanel">
-        <div class="panel-head">
-          <span class="panel-title">Results</span>
-        </div>
-        <div class="results-scroll">
-          <table id="resultsTable">
-            <thead id="resultsHead"></thead>
-            <tbody id="resultsBody"></tbody>
-          </table>
-        </div>
-        <div class="results-footer" id="resultsFooter"></div>
-      </div>
+          <div class="comparison-col">
+            <div class="panel hidden" id="sqlPanel">
+              <div class="panel-head">
+                <span class="panel-title">Generated SQL</span>
+                <span class="badge badge-safe" id="sqlBadge">✓ safe</span>
+              </div>
+              <div class="sql-body" id="sqlBody"></div>
+            </div>
 
-      <!-- STATE: Error panel (hidden until a blocked/failed query) -->
-      <div class="panel hidden" id="errorPanel">
-        <div class="panel-head">
-          <span class="panel-title">Error</span>
-          <span class="badge badge-blocked">blocked</span>
+            <div class="panel hidden" id="resultsPanel">
+              <div class="panel-head">
+                <span class="panel-title">Current Data</span>
+              </div>
+              <div class="results-scroll">
+                <table id="resultsTable">
+                  <thead id="resultsHead"></thead>
+                  <tbody id="resultsBody"></tbody>
+                </table>
+              </div>
+              <div class="results-footer" id="resultsFooter"></div>
+            </div>
+
+            <div class="panel hidden" id="errorPanel">
+              <div class="panel-head">
+                <span class="panel-title">Error</span>
+                <span class="badge badge-blocked">blocked</span>
+              </div>
+              <div class="error-body" id="errorBody"></div>
+            </div>
+          </div>
+
+          <div class="panel hidden" id="previewPanel">
+            <div class="panel-head">
+              <span class="panel-title">Pending Changes Preview</span>
+              <span class="badge badge-pending" id="previewBadge">pending</span>
+            </div>
+            <div class="preview-summary" id="previewSummary">Run an UPDATE, INSERT, or DELETE to preview changes.</div>
+            <div class="results-scroll">
+              <table>
+                <thead id="previewHead"></thead>
+                <tbody id="previewBody"></tbody>
+              </table>
+            </div>
+            <div class="results-footer" id="previewFooter"></div>
+            <div class="preview-actions">
+              <button class="btn-ghost" id="undoPreviewBtn">Undo</button>
+              <button class="btn-primary" id="confirmPreviewBtn">Confirm Commit</button>
+            </div>
+          </div>
+
         </div>
-        <div class="error-body" id="errorBody"></div>
       </div>
 
     </div>

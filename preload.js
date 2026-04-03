@@ -30,4 +30,16 @@ contextBridge.exposeInMainWorld('db', {
   // Run a SQL query
   query: (sql) =>
     ipcRenderer.invoke('db:query', { sql }),
+
+  // Run a mutating SQL statement in a preview transaction
+  previewChange: (sql, tableHint) =>
+    ipcRenderer.invoke('db:preview-change', { sql, tableHint }),
+
+  // Commit the currently previewed transaction
+  commitPreview: () =>
+    ipcRenderer.invoke('db:commit-preview'),
+
+  // Rollback the currently previewed transaction
+  undoPreview: () =>
+    ipcRenderer.invoke('db:undo-preview'),
 })

@@ -573,6 +573,25 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   gap: 14px;
 }
 
+.comparison-area {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.comparison-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .empty-state {
   flex: 1;
   display: flex;
@@ -619,6 +638,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .badge-safe    { color: #4ade80; border-color: rgba(74,222,128,0.3); background: rgba(74,222,128,0.08); }
 .badge-blocked { color: var(--danger); border-color: rgba(248,113,113,0.3); background: var(--danger-dim); }
+.badge-pending { color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.12); }
 
 /* SQL body */
 .sql-body {
@@ -673,6 +693,23 @@ tbody tr:hover td { background: var(--surface2); }
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
+}
+
+.preview-summary {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
 }
 
 /* Error body */
@@ -799,6 +836,12 @@ tbody tr:hover td { background: var(--surface2); }
   margin-top: 4px;
   padding-top: 5px;
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 1100px) {
+  .comparison-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Scrollbar */
