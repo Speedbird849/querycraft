@@ -22,6 +22,10 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   --mono:        'DM Mono', monospace;
   --r:           8px;
   --r-lg:        12px;
+  --motion-fast: 140ms;
+  --motion-base: 220ms;
+  --motion-slow: 320ms;
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
@@ -38,6 +42,26 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     "statusbar statusbar";
 }
 
+/* Shared subtle motion for interactive controls */
+button,
+.driver-tab,
+.schema-card,
+.schema-table,
+.history-item,
+.filter-pill,
+.filter-btn,
+.filter-toggle-btn,
+.run-btn,
+.topbar-btn {
+  transition:
+    background-color var(--motion-fast) var(--ease-soft),
+    border-color var(--motion-fast) var(--ease-soft),
+    color var(--motion-fast) var(--ease-soft),
+    opacity var(--motion-fast) var(--ease-soft),
+    transform var(--motion-fast) var(--ease-soft),
+    box-shadow var(--motion-base) var(--ease-soft);
+}
+
 /* ══ TOPBAR ══ */
 .topbar {
   grid-area: topbar;
@@ -48,6 +72,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;   /* makes the topbar draggable as a native titlebar */
+  animation: bar-in var(--motion-slow) var(--ease-soft);
 }
 
 /* Buttons/inputs inside topbar must opt out of dragging */
@@ -91,6 +116,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   transition: all 0.15s;
 }
 .topbar-btn:hover { background: var(--surface2); color: var(--text); }
+.topbar-btn:hover { transform: translateY(-1px); }
 .topbar-btn.btn-connect    { border-color: rgba(74,222,128,0.35); color: rgba(74,222,128,0.8); }
 .topbar-btn.btn-connect:hover    { background: rgba(74,222,128,0.08); color: var(--accent); }
 .topbar-btn.btn-disconnect { border-color: rgba(248,113,113,0.35); color: rgba(248,113,113,0.8); }
@@ -319,6 +345,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: sidebar-in var(--motion-slow) var(--ease-soft);
 }
 
 .sidebar-section {
@@ -353,6 +380,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border: 1px solid var(--border);
   border-radius: var(--r);
   overflow: hidden;
+  animation: item-fade-in var(--motion-slow) var(--ease-soft);
 }
 
 .schema-table-header {
@@ -368,6 +396,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   user-select: none;
 }
 .schema-table-header:hover { background: var(--surface3); }
+.schema-table-header:hover { transform: translateX(1px); }
 .schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; }
 .schema-table-header .tbl-chevron { margin-left: auto; color: var(--faint); font-size: 10px; }
 
@@ -398,6 +427,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   cursor: pointer;
 }
 .history-item:hover { background: var(--surface2); }
+.history-item:hover { transform: translateX(1px); }
 .history-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); margin-top: 5px; flex-shrink: 0; }
 .history-text { font-size: 11px; color: var(--muted); line-height: 1.4; }
 
@@ -407,6 +437,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: content-in var(--motion-slow) var(--ease-soft);
 }
 
 /* Filter bar */
@@ -426,6 +457,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: flex;
   align-items: center;
   gap: 6px;
+  animation: item-fade-in var(--motion-base) var(--ease-soft);
 }
 
 .filter-check {
@@ -541,6 +573,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .run-btn:hover { opacity: 0.85; }
 .run-btn:active { opacity: 0.7; }
+.run-btn:hover { transform: translateY(-1px); }
 
 .filter-toggle-btn {
   padding: 0 14px;
@@ -557,6 +590,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   align-self: flex-start;
 }
 .filter-toggle-btn:hover { background: var(--surface2); color: var(--text); }
+.filter-toggle-btn:hover { transform: translateY(-1px); }
 .filter-toggle-btn.active {
   background: var(--accent-dim);
   border-color: rgba(74,222,128,0.3);
@@ -584,7 +618,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
-  transition: gap 0.18s ease;
+  transition:
+    gap var(--motion-base) var(--ease-soft),
+    grid-template-columns var(--motion-base) var(--ease-soft);
 }
 
 .comparison-grid.preview-active {
@@ -629,6 +665,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   overflow: hidden;
+  animation: panel-in var(--motion-base) var(--ease-soft);
 }
 
 .panel-head {
@@ -701,6 +738,7 @@ tbody td {
 }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--surface2); }
+tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
 
 .null-value { color: var(--faint); font-style: italic; }
 
@@ -789,9 +827,16 @@ tbody tr:hover td { background: var(--surface2); }
   border-radius: var(--r-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition:
+    border-color var(--motion-fast) var(--ease-soft),
+    transform var(--motion-fast) var(--ease-soft),
+    box-shadow var(--motion-base) var(--ease-soft);
 }
-.schema-card:hover { border-color: var(--border2); }
+.schema-card:hover {
+  border-color: var(--border2);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
 .schema-card:hover .schema-card-head { background: var(--surface3); }
 
 .schema-card-head {
@@ -865,7 +910,37 @@ tbody tr:hover td { background: var(--surface2); }
   }
 }
 
+@keyframes bar-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sidebar-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes content-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes item-fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
   #previewPanel.preview-animate {
     animation: none;
   }
