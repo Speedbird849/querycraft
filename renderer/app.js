@@ -874,6 +874,7 @@ function showPanels(mode) {
     sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
     previewPanel.classList.remove('hidden')
+    triggerPreviewPanelAnimation()
   } else if (mode === 'error') {
     comparisonArea.classList.remove('hidden')
     errorPanel.classList.remove('hidden')
@@ -888,6 +889,12 @@ function showPanels(mode) {
 function setComparisonLayout(showPreview) {
   if (!comparisonGrid) return
   comparisonGrid.classList.toggle('preview-active', showPreview)
+}
+
+function triggerPreviewPanelAnimation() {
+  previewPanel.classList.remove('preview-animate')
+  void previewPanel.offsetWidth
+  previewPanel.classList.add('preview-animate')
 }
 
 
