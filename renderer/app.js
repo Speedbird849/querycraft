@@ -93,7 +93,6 @@ const state = {
   filters: [],          // [ { column, operator, value, enabled } ]
 }
 
-
 /* ══════════════════════════════════════════
    3. CONNECTION MODAL
 ══════════════════════════════════════════ */
