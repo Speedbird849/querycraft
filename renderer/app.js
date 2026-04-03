@@ -474,16 +474,18 @@ function buildTableNode(tableName, columns) {
   // Single click — select table (run SELECT *)
   // Chevron click toggles columns open/closed
   let expanded = true
+  const setExpanded = (isExpanded) => {
+    expanded = isExpanded
+    colsDiv.style.display = expanded ? 'block' : 'none'
+    header.querySelector('.tbl-chevron').textContent = expanded ? '▾' : '▸'
+  }
+
   header.addEventListener('click', (e) => {
     if (e.target.classList.contains('tbl-chevron')) {
-      expanded = !expanded
-      colsDiv.style.display = expanded ? 'block' : 'none'
-      header.querySelector('.tbl-chevron').textContent = expanded ? '▾' : '▸'
+      setExpanded(!expanded)
     } else {
-      // Selecting a table from the sidebar keeps it selected and collapses details.
-      expanded = false
-      colsDiv.style.display = 'none'
-      header.querySelector('.tbl-chevron').textContent = '▸'
+      // Selecting a table keeps it active and toggles schema detail visibility.
+      setExpanded(!expanded)
       selectTable(tableName)
     }
   })
