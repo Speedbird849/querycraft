@@ -69,6 +69,7 @@ const sqlPanel       = document.getElementById('sqlPanel')
 const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
 const comparisonArea = document.getElementById('comparisonArea')
+const comparisonGrid = document.querySelector('.comparison-grid')
 const resultsPanel   = document.getElementById('resultsPanel')
 const resultsHead    = document.getElementById('resultsHead')
 const resultsBody    = document.getElementById('resultsBody')
@@ -854,6 +855,7 @@ function renderPreviewResults(fields, rows, affectedRows, targetTable) {
 }
 
 function showPanels(mode) {
+  setComparisonLayout(false)
   emptyState.classList.add('hidden')
   schemaOverview.classList.add('hidden')
   comparisonArea.classList.add('hidden')
@@ -867,6 +869,7 @@ function showPanels(mode) {
     sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
   } else if (mode === 'preview') {
+    setComparisonLayout(true)
     comparisonArea.classList.remove('hidden')
     sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
@@ -880,6 +883,11 @@ function showPanels(mode) {
     emptyState.classList.remove('hidden')
   }
   // 'loading' just shows nothing while waiting
+}
+
+function setComparisonLayout(showPreview) {
+  if (!comparisonGrid) return
+  comparisonGrid.classList.toggle('preview-active', showPreview)
 }
 
 
