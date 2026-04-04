@@ -686,9 +686,16 @@ document.addEventListener('keydown', handleGlobalShortcuts)
 refreshEntryButtons()
 
 function handleGlobalShortcuts(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+
+  if (e.key === 'Escape' && !errorPanel.classList.contains('hidden')) {
+    e.preventDefault()
+    returnToSchemaOverview()
+    return
+  }
+
   if (e.key !== 'Enter') return
   if (!state.pendingPreview) return
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
 
   const activeTag = document.activeElement?.tagName
   const isInputLike = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT' || document.activeElement?.isContentEditable

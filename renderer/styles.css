@@ -862,6 +862,15 @@ tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
   line-height: 1.6;
 }
 
+.error-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
 /* ══ STATUS BAR ══ */
 .statusbar {
   grid-area: statusbar;
