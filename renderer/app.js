@@ -453,7 +453,9 @@ async function handleDisconnect() {
 
   // Clear sidebar
   schemaList.innerHTML = '<div class="sidebar-empty">No connection</div>'
-  historyList.innerHTML = '<div class="sidebar-empty">No queries yet</div>'
+  if (historyList) {
+    historyList.innerHTML = '<div class="sidebar-empty">No queries yet</div>'
+  }
 
   // Clear filter bar
   filterBar.classList.add('hidden')
@@ -1624,6 +1626,8 @@ function triggerPreviewPanelAnimation() {
 ══════════════════════════════════════════ */
 
 function addHistory(sql) {
+  if (!historyList) return
+
   state.queryHistory.unshift(sql)
 
   const item = document.createElement('div')
