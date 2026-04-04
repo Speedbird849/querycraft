@@ -87,6 +87,7 @@ const confirmPreviewBtn = document.getElementById('confirmPreviewBtn')
 const undoPreviewBtn = document.getElementById('undoPreviewBtn')
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
+const errorReturnBtn = document.getElementById('errorReturnBtn')
 
 const statusMsg      = document.getElementById('statusMsg')
 const statusDriver   = document.getElementById('statusDriver')
@@ -680,7 +681,33 @@ saveEntryBtn.addEventListener('click', handleSaveEntry)
 cancelEntryBtn.addEventListener('click', handleCancelEntry)
 confirmPreviewBtn.addEventListener('click', commitPreview)
 undoPreviewBtn.addEventListener('click', undoPreview)
+errorReturnBtn.addEventListener('click', returnToSchemaOverview)
+document.addEventListener('keydown', handleGlobalShortcuts)
 refreshEntryButtons()
+
+function handleGlobalShortcuts(e) {
+  if (e.key !== 'Enter') return
+  if (!state.pendingPreview) return
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+
+  const activeTag = document.activeElement?.tagName
+  const isInputLike = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT' || document.activeElement?.isContentEditable
+  if (isInputLike) return
+
+  e.preventDefault()
+  void commitPreview()
+}
+
+function returnToSchemaOverview() {
+  if (!state.connected) {
+    showPanels('empty')
+    setStatus('Disconnected')
+    return
+  }
+
+  showPanels('schema')
+  setStatus('Showing schema overview')
+}
 
 async function runQuery(sql) {
   if (isMutatingSql(sql)) {
