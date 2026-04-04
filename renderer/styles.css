@@ -339,15 +339,16 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   width: 100%;
   padding: 7px 10px;
   border-radius: var(--r);
-  border: 1px solid rgba(74,222,128,0.35);
-  background: rgba(74,222,128,0.12);
-  color: rgba(74,222,128,0.95);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--muted);
   font-size: 12px;
   cursor: pointer;
 }
 
 .sidebar-action-btn:hover:not(:disabled) {
-  background: rgba(74,222,128,0.18);
+  background: var(--surface3);
+  color: var(--text);
 }
 
 .sidebar-action-btn.active {
@@ -619,30 +620,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.table-editor-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: linear-gradient(120deg, rgba(96,165,250,0.08), rgba(74,222,128,0.05));
-}
-
-.table-editor-kicker {
-  font-size: 10px;
-  color: var(--muted);
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-.table-editor-title {
-  font-size: 15px;
-  color: var(--text);
-  font-weight: 500;
 }
 
 .table-editor-grid {

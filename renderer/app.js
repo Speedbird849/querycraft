@@ -647,6 +647,11 @@ function buildTableNode(tableName, columns) {
 }
 
 function selectTable(tableName) {
+  if (state.viewMode === 'editor') {
+    leaveTableEditor()
+    if (state.viewMode === 'editor') return
+  }
+
   state.activeTable = tableName
   state.selectedRowIndices = []
   refreshEntryButtons()
