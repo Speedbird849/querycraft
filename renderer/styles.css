@@ -772,6 +772,29 @@ tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
   box-shadow: none;
 }
 
+.entry-row td {
+  background: rgba(74,222,128,0.08);
+}
+
+.entry-cell-input {
+  width: 100%;
+  min-width: 120px;
+  background: rgba(14,16,20,0.85);
+  border: 1px solid rgba(74,222,128,0.35);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color var(--motion-fast) var(--ease-soft), box-shadow var(--motion-fast) var(--ease-soft);
+}
+
+.entry-cell-input:focus {
+  border-color: rgba(74,222,128,0.65);
+  box-shadow: 0 0 0 2px rgba(74,222,128,0.18);
+}
+
 .null-value { color: var(--faint); font-style: italic; }
 
 .results-footer {

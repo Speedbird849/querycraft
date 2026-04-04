@@ -76,6 +76,8 @@ const resultsBody    = document.getElementById('resultsBody')
 const resultsFooter  = document.getElementById('resultsFooter')
 const addEntryBtn    = document.getElementById('addEntryBtn')
 const removeEntryBtn = document.getElementById('removeEntryBtn')
+const saveEntryBtn   = document.getElementById('saveEntryBtn')
+const cancelEntryBtn = document.getElementById('cancelEntryBtn')
 const previewPanel   = document.getElementById('previewPanel')
 const previewSummary = document.getElementById('previewSummary')
 const previewHead    = document.getElementById('previewHead')
@@ -106,6 +108,9 @@ const state = {
   resultFields: [],
   resultRows: [],
   selectedRowIndices: [],
+  resultRightLabel: '',
+  entryDraftActive: false,
+  entryDraftValues: {},
 }
 
 /* ══════════════════════════════════════════
@@ -324,6 +329,9 @@ async function handleDisconnect() {
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
+  state.resultRightLabel = ''
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
 
   setConnected(false)
 
@@ -666,6 +674,8 @@ queryInput.addEventListener('keydown', (e) => {
 
 addEntryBtn.addEventListener('click', handleAddEntry)
 removeEntryBtn.addEventListener('click', handleRemoveEntry)
+saveEntryBtn.addEventListener('click', handleSaveEntry)
+cancelEntryBtn.addEventListener('click', handleCancelEntry)
 confirmPreviewBtn.addEventListener('click', commitPreview)
 undoPreviewBtn.addEventListener('click', undoPreview)
 refreshEntryButtons()
@@ -734,6 +744,8 @@ async function runMutationPreview(sql) {
     targetTable: result.targetTable || tableHint || null,
   }
   state.selectedRowIndices = []
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
   refreshEntryButtons()
 
   sqlBody.textContent = sql
@@ -764,6 +776,8 @@ async function commitPreview() {
 
   state.pendingPreview = null
   state.selectedRowIndices = []
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
   previewPanel.classList.add('hidden')
   refreshEntryButtons()
   setStatus('Changes committed')
@@ -792,6 +806,8 @@ async function undoPreview() {
 
   state.pendingPreview = null
   state.selectedRowIndices = []
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
   previewPanel.classList.add('hidden')
   previewSummary.textContent = 'Preview rolled back. No changes were saved.'
   refreshEntryButtons()
@@ -833,14 +849,49 @@ function extractTargetTable(sql) {
 
 async function handleAddEntry() {
   if (!state.activeTable || state.pendingPreview) return
+  if (!state.resultFields.length) return
+
+  state.entryDraftActive = true
+  state.entryDraftValues = {}
+  state.selectedRowIndices = []
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+  refreshEntryButtons()
+}
+
+async function handleSaveEntry() {
+  if (!state.activeTable || state.pendingPreview || !state.entryDraftActive) return
 
   const tableRef = quoteTableIdentifier(state.activeTable)
-  const sql = state.driver === 'mysql'
-    ? `INSERT INTO ${tableRef} () VALUES ();`
-    : `INSERT INTO ${tableRef} DEFAULT VALUES;`
+  const filledFields = state.resultFields.filter(field => {
+    const raw = state.entryDraftValues[field]
+    return raw !== undefined && String(raw).trim() !== ''
+  })
+
+  let sql = ''
+  if (filledFields.length === 0) {
+    sql = state.driver === 'mysql'
+      ? `INSERT INTO ${tableRef} () VALUES ();`
+      : `INSERT INTO ${tableRef} DEFAULT VALUES;`
+  } else {
+    const columnsSql = filledFields.map(quoteColumnIdentifier).join(', ')
+    const valuesSql = filledFields.map(field => toSqlInputLiteral(state.entryDraftValues[field])).join(', ')
+    sql = `INSERT INTO ${tableRef} (${columnsSql}) VALUES (${valuesSql});`
+  }
+
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
+  refreshEntryButtons()
 
   queryInput.value = sql
   await runQuery(sql)
+}
+
+function handleCancelEntry() {
+  if (!state.entryDraftActive) return
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+  refreshEntryButtons()
 }
 
 async function handleRemoveEntry() {
@@ -902,14 +953,39 @@ function toSqlLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`
 }
 
+function toSqlInputLiteral(value) {
+  const raw = String(value ?? '').trim()
+  if (raw === '') return 'NULL'
+  if (/^null$/i.test(raw)) return 'NULL'
+  if (/^true$/i.test(raw)) return 'TRUE'
+  if (/^false$/i.test(raw)) return 'FALSE'
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return raw
+  return toSqlLiteral(raw)
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function refreshEntryButtons() {
   const hasTable = Boolean(state.activeTable)
   const hasPendingPreview = Boolean(state.pendingPreview)
   const hasPk = Boolean(getPrimaryKeyColumn(state.activeTable))
-  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview
+  const hasResultFields = state.resultFields.length > 0
+  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive
 
-  addEntryBtn.disabled = !hasTable || hasPendingPreview
+  addEntryBtn.disabled = !hasTable || hasPendingPreview || state.entryDraftActive || !hasResultFields
   removeEntryBtn.disabled = !canRemove
+  saveEntryBtn.disabled = !state.entryDraftActive
+  cancelEntryBtn.disabled = !state.entryDraftActive
+  addEntryBtn.classList.toggle('hidden', state.entryDraftActive)
+  saveEntryBtn.classList.toggle('hidden', !state.entryDraftActive)
+  cancelEntryBtn.classList.toggle('hidden', !state.entryDraftActive)
 }
 
 
@@ -921,12 +997,13 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   state.resultFields = fields
   state.resultRows = rows
   state.selectedRowIndices = []
+  state.resultRightLabel = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
 
   // Header row
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
 
   // Body rows
-  resultsBody.innerHTML = rows.map((row, index) =>
+  const dataRowsHtml = rows.map((row, index) =>
     `<tr class="result-row" data-row-index="${index}">` + fields.map(f => {
       const val = row[f]
       if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
@@ -934,23 +1011,56 @@ function renderResults(fields, rows, ms, rightLabel = null) {
     }).join('') + '</tr>'
   ).join('')
 
+  let draftRowHtml = ''
+  if (state.entryDraftActive) {
+    draftRowHtml = '<tr class="entry-row">' + fields.map(field => {
+      const val = state.entryDraftValues[field] ?? ''
+      return `<td><input class="entry-cell-input" data-field="${escapeHtml(field)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(field)}" /></td>`
+    }).join('') + '</tr>'
+  }
+
+  resultsBody.innerHTML = draftRowHtml + dataRowsHtml
+
   if (rows.length === 0) {
     const colSpan = Math.max(fields.length, 1)
     resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
   }
 
-  const right = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
-  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${right}</span>`
+  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${state.resultRightLabel}</span>`
 
+  bindEntryRowInputs()
   bindResultRowSelection()
   refreshEntryButtons()
+}
+
+function bindEntryRowInputs() {
+  const inputs = resultsBody.querySelectorAll('.entry-cell-input')
+  inputs.forEach(input => {
+    input.addEventListener('input', (e) => {
+      const field = e.currentTarget.dataset.field
+      state.entryDraftValues[field] = e.currentTarget.value
+    })
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        handleSaveEntry()
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleCancelEntry()
+      }
+    })
+  })
+
+  if (inputs.length > 0) inputs[0].focus()
 }
 
 function bindResultRowSelection() {
   const rows = resultsBody.querySelectorAll('.result-row')
   rows.forEach(rowEl => {
     rowEl.addEventListener('click', (e) => {
-      if (state.pendingPreview || !state.activeTable) return
+      if (state.pendingPreview || !state.activeTable || state.entryDraftActive) return
       const rowIndex = Number(rowEl.dataset.rowIndex)
       if (!Number.isInteger(rowIndex)) return
 
