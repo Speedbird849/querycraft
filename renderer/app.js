@@ -105,7 +105,7 @@ const state = {
   pendingPreview: null, // { sql, targetTable }
   resultFields: [],
   resultRows: [],
-  selectedRowIndex: null,
+  selectedRowIndices: [],
 }
 
 /* ══════════════════════════════════════════
@@ -323,7 +323,7 @@ async function handleDisconnect() {
   state.pendingPreview = null
   state.resultFields = []
   state.resultRows = []
-  state.selectedRowIndex = null
+  state.selectedRowIndices = []
 
   setConnected(false)
 
@@ -506,7 +506,7 @@ function buildTableNode(tableName, columns) {
 
 function selectTable(tableName) {
   state.activeTable = tableName
-  state.selectedRowIndex = null
+  state.selectedRowIndices = []
   refreshEntryButtons()
   const sql = `SELECT * FROM ${tableName} LIMIT 100;`
   queryInput.value = sql
@@ -733,7 +733,7 @@ async function runMutationPreview(sql) {
     sql,
     targetTable: result.targetTable || tableHint || null,
   }
-  state.selectedRowIndex = null
+  state.selectedRowIndices = []
   refreshEntryButtons()
 
   sqlBody.textContent = sql
@@ -763,7 +763,7 @@ async function commitPreview() {
   }
 
   state.pendingPreview = null
-  state.selectedRowIndex = null
+  state.selectedRowIndices = []
   previewPanel.classList.add('hidden')
   refreshEntryButtons()
   setStatus('Changes committed')
@@ -791,7 +791,7 @@ async function undoPreview() {
   }
 
   state.pendingPreview = null
-  state.selectedRowIndex = null
+  state.selectedRowIndices = []
   previewPanel.classList.add('hidden')
   previewSummary.textContent = 'Preview rolled back. No changes were saved.'
   refreshEntryButtons()
@@ -845,7 +845,7 @@ async function handleAddEntry() {
 
 async function handleRemoveEntry() {
   if (!state.activeTable || state.pendingPreview) return
-  if (state.selectedRowIndex === null) return
+  if (state.selectedRowIndices.length === 0) return
 
   const pk = getPrimaryKeyColumn(state.activeTable)
   if (!pk) {
@@ -855,17 +855,21 @@ async function handleRemoveEntry() {
     return
   }
 
-  const row = state.resultRows[state.selectedRowIndex]
-  if (!row || row[pk.column_name] === undefined || row[pk.column_name] === null) {
+  const selectedValues = state.selectedRowIndices
+    .map(index => state.resultRows[index]?.[pk.column_name])
+    .filter(value => value !== undefined && value !== null)
+
+  if (selectedValues.length === 0) {
     showPanels('error')
-    errorBody.textContent = `Selected row does not contain a valid value for primary key: ${pk.column_name}.`
-    setStatus('Cannot remove selected row')
+    errorBody.textContent = `Selected rows do not contain valid values for primary key: ${pk.column_name}.`
+    setStatus('Cannot remove selected rows')
     return
   }
 
   const tableRef = quoteTableIdentifier(state.activeTable)
   const colRef = quoteColumnIdentifier(pk.column_name)
-  const sql = `DELETE FROM ${tableRef} WHERE ${colRef} = ${toSqlLiteral(row[pk.column_name])};`
+  const valuesSql = selectedValues.map(toSqlLiteral).join(', ')
+  const sql = `DELETE FROM ${tableRef} WHERE ${colRef} IN (${valuesSql});`
 
   queryInput.value = sql
   await runQuery(sql)
@@ -902,7 +906,7 @@ function refreshEntryButtons() {
   const hasTable = Boolean(state.activeTable)
   const hasPendingPreview = Boolean(state.pendingPreview)
   const hasPk = Boolean(getPrimaryKeyColumn(state.activeTable))
-  const canRemove = hasTable && hasPk && state.selectedRowIndex !== null && !hasPendingPreview
+  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview
 
   addEntryBtn.disabled = !hasTable || hasPendingPreview
   removeEntryBtn.disabled = !canRemove
@@ -916,7 +920,7 @@ function refreshEntryButtons() {
 function renderResults(fields, rows, ms, rightLabel = null) {
   state.resultFields = fields
   state.resultRows = rows
-  state.selectedRowIndex = null
+  state.selectedRowIndices = []
 
   // Header row
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
@@ -950,12 +954,12 @@ function bindResultRowSelection() {
       const rowIndex = Number(rowEl.dataset.rowIndex)
       if (!Number.isInteger(rowIndex)) return
 
-      state.selectedRowIndex = state.selectedRowIndex === rowIndex ? null : rowIndex
-
-      rows.forEach(el => el.classList.remove('selected'))
-      if (state.selectedRowIndex !== null) {
-        const selected = resultsBody.querySelector(`.result-row[data-row-index="${state.selectedRowIndex}"]`)
-        if (selected) selected.classList.add('selected')
+      if (state.selectedRowIndices.includes(rowIndex)) {
+        state.selectedRowIndices = state.selectedRowIndices.filter(i => i !== rowIndex)
+        rowEl.classList.remove('selected')
+      } else {
+        state.selectedRowIndices.push(rowIndex)
+        rowEl.classList.add('selected')
       }
 
       refreshEntryButtons()
