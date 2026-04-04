@@ -25,6 +25,7 @@
 const dbBadge        = document.getElementById('dbBadge')
 const dbDot          = document.getElementById('dbDot')
 const dbLabel        = document.getElementById('dbLabel')
+const refreshBtn     = document.getElementById('refreshBtn')
 const connectBtn     = document.getElementById('connectBtn')
 
 const modalOverlay   = document.getElementById('modalOverlay')
@@ -271,6 +272,22 @@ connectBtn.addEventListener('click', () => {
   }
 })
 
+refreshBtn.addEventListener('click', async () => {
+  if (!state.connected) return
+  if (state.pendingPreview) {
+    setStatus('Finish the staged preview before refreshing schema.')
+    return
+  }
+
+  refreshBtn.disabled = true
+  try {
+    await loadSchema()
+    setStatus('Schema refreshed')
+  } finally {
+    refreshBtn.disabled = !state.connected
+  }
+})
+
 modalClose.addEventListener('click', closeModal)
 modalCancel.addEventListener('click', closeModal)
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal() })
@@ -508,6 +525,7 @@ function setConnected(yes) {
   connectBtn.classList.remove('btn-confirm')
   connectBtn.classList.toggle('btn-disconnect', yes)
   connectBtn.classList.toggle('btn-connect', !yes)
+  refreshBtn.disabled = !yes
   tableEditorBtn.disabled = !yes
   statusDriver.textContent = yes ? state.driver : ''
   setStatus(yes ? `Connected to ${state.dbName}` : 'Ready')
