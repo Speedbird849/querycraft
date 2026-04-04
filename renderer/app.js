@@ -74,6 +74,8 @@ const resultsPanel   = document.getElementById('resultsPanel')
 const resultsHead    = document.getElementById('resultsHead')
 const resultsBody    = document.getElementById('resultsBody')
 const resultsFooter  = document.getElementById('resultsFooter')
+const addEntryBtn    = document.getElementById('addEntryBtn')
+const removeEntryBtn = document.getElementById('removeEntryBtn')
 const previewPanel   = document.getElementById('previewPanel')
 const previewSummary = document.getElementById('previewSummary')
 const previewHead    = document.getElementById('previewHead')
@@ -101,6 +103,9 @@ const state = {
   queryHistory: [],
   filters: [],          // [ { column, operator, value, enabled } ]
   pendingPreview: null, // { sql, targetTable }
+  resultFields: [],
+  resultRows: [],
+  selectedRowIndex: null,
 }
 
 /* ══════════════════════════════════════════
@@ -316,6 +321,9 @@ async function handleDisconnect() {
   state.filters = []
   state.queryHistory = []
   state.pendingPreview = null
+  state.resultFields = []
+  state.resultRows = []
+  state.selectedRowIndex = null
 
   setConnected(false)
 
@@ -347,6 +355,7 @@ async function handleDisconnect() {
   previewSummary.textContent = 'Run an UPDATE, INSERT, or DELETE to preview changes.'
   queryInput.value = ''
   queryInput.style.height = 'auto'
+  refreshEntryButtons()
 
   setStatus('Disconnected')
 }
@@ -497,6 +506,8 @@ function buildTableNode(tableName, columns) {
 
 function selectTable(tableName) {
   state.activeTable = tableName
+  state.selectedRowIndex = null
+  refreshEntryButtons()
   const sql = `SELECT * FROM ${tableName} LIMIT 100;`
   queryInput.value = sql
   runQuery(sql)
@@ -653,8 +664,11 @@ queryInput.addEventListener('keydown', (e) => {
   }
 })
 
+addEntryBtn.addEventListener('click', handleAddEntry)
+removeEntryBtn.addEventListener('click', handleRemoveEntry)
 confirmPreviewBtn.addEventListener('click', commitPreview)
 undoPreviewBtn.addEventListener('click', undoPreview)
+refreshEntryButtons()
 
 async function runQuery(sql) {
   if (isMutatingSql(sql)) {
@@ -719,6 +733,8 @@ async function runMutationPreview(sql) {
     sql,
     targetTable: result.targetTable || tableHint || null,
   }
+  state.selectedRowIndex = null
+  refreshEntryButtons()
 
   sqlBody.textContent = sql
   sqlBadge.textContent = 'pending commit'
@@ -747,7 +763,9 @@ async function commitPreview() {
   }
 
   state.pendingPreview = null
+  state.selectedRowIndex = null
   previewPanel.classList.add('hidden')
+  refreshEntryButtons()
   setStatus('Changes committed')
 
   if (targetTable) {
@@ -773,8 +791,10 @@ async function undoPreview() {
   }
 
   state.pendingPreview = null
+  state.selectedRowIndex = null
   previewPanel.classList.add('hidden')
   previewSummary.textContent = 'Preview rolled back. No changes were saved.'
+  refreshEntryButtons()
   setStatus('Preview rolled back')
 
   if (targetTable) {
@@ -811,18 +831,99 @@ function extractTargetTable(sql) {
   return ''
 }
 
+async function handleAddEntry() {
+  if (!state.activeTable || state.pendingPreview) return
+
+  const tableRef = quoteTableIdentifier(state.activeTable)
+  const sql = state.driver === 'mysql'
+    ? `INSERT INTO ${tableRef} () VALUES ();`
+    : `INSERT INTO ${tableRef} DEFAULT VALUES;`
+
+  queryInput.value = sql
+  await runQuery(sql)
+}
+
+async function handleRemoveEntry() {
+  if (!state.activeTable || state.pendingPreview) return
+  if (state.selectedRowIndex === null) return
+
+  const pk = getPrimaryKeyColumn(state.activeTable)
+  if (!pk) {
+    showPanels('error')
+    errorBody.textContent = 'Remove requires a primary key column on the selected table.'
+    setStatus('Cannot remove without primary key')
+    return
+  }
+
+  const row = state.resultRows[state.selectedRowIndex]
+  if (!row || row[pk.column_name] === undefined || row[pk.column_name] === null) {
+    showPanels('error')
+    errorBody.textContent = `Selected row does not contain a valid value for primary key: ${pk.column_name}.`
+    setStatus('Cannot remove selected row')
+    return
+  }
+
+  const tableRef = quoteTableIdentifier(state.activeTable)
+  const colRef = quoteColumnIdentifier(pk.column_name)
+  const sql = `DELETE FROM ${tableRef} WHERE ${colRef} = ${toSqlLiteral(row[pk.column_name])};`
+
+  queryInput.value = sql
+  await runQuery(sql)
+}
+
+function getPrimaryKeyColumn(tableName) {
+  const cols = state.columns[tableName] || []
+  return cols.find(col => col.is_pk) || null
+}
+
+function quoteTableIdentifier(tableName) {
+  const parts = tableName.split('.').map(part => part.trim()).filter(Boolean)
+  if (parts.length === 0) return tableName
+  return parts.map(quoteIdentifierPart).join('.')
+}
+
+function quoteColumnIdentifier(columnName) {
+  return quoteIdentifierPart(columnName)
+}
+
+function quoteIdentifierPart(identifier) {
+  if (state.driver === 'postgres') return `"${String(identifier).replace(/"/g, '""')}"`
+  return `\`${String(identifier).replace(/`/g, '``')}\``
+}
+
+function toSqlLiteral(value) {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL'
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+  return `'${String(value).replace(/'/g, "''")}'`
+}
+
+function refreshEntryButtons() {
+  const hasTable = Boolean(state.activeTable)
+  const hasPendingPreview = Boolean(state.pendingPreview)
+  const hasPk = Boolean(getPrimaryKeyColumn(state.activeTable))
+  const canRemove = hasTable && hasPk && state.selectedRowIndex !== null && !hasPendingPreview
+
+  addEntryBtn.disabled = !hasTable || hasPendingPreview
+  removeEntryBtn.disabled = !canRemove
+}
+
 
 /* ══════════════════════════════════════════
    7. RESULTS RENDERER
 ══════════════════════════════════════════ */
 
 function renderResults(fields, rows, ms, rightLabel = null) {
+  state.resultFields = fields
+  state.resultRows = rows
+  state.selectedRowIndex = null
+
   // Header row
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
 
   // Body rows
-  resultsBody.innerHTML = rows.map(row =>
-    '<tr>' + fields.map(f => {
+  resultsBody.innerHTML = rows.map((row, index) =>
+    `<tr class="result-row" data-row-index="${index}">` + fields.map(f => {
       const val = row[f]
       if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
       return `<td>${val}</td>`
@@ -836,6 +937,30 @@ function renderResults(fields, rows, ms, rightLabel = null) {
 
   const right = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
   resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${right}</span>`
+
+  bindResultRowSelection()
+  refreshEntryButtons()
+}
+
+function bindResultRowSelection() {
+  const rows = resultsBody.querySelectorAll('.result-row')
+  rows.forEach(rowEl => {
+    rowEl.addEventListener('click', () => {
+      if (state.pendingPreview || !state.activeTable) return
+      const rowIndex = Number(rowEl.dataset.rowIndex)
+      if (!Number.isInteger(rowIndex)) return
+
+      state.selectedRowIndex = state.selectedRowIndex === rowIndex ? null : rowIndex
+
+      rows.forEach(el => el.classList.remove('selected'))
+      if (state.selectedRowIndex !== null) {
+        const selected = resultsBody.querySelector(`.result-row[data-row-index="${state.selectedRowIndex}"]`)
+        if (selected) selected.classList.add('selected')
+      }
+
+      refreshEntryButtons()
+    })
+  })
 }
 
 function renderPreviewResults(fields, rows, affectedRows, targetTable) {
