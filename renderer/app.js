@@ -949,18 +949,27 @@ function renderResults(fields, rows, ms, rightLabel = null) {
 function bindResultRowSelection() {
   const rows = resultsBody.querySelectorAll('.result-row')
   rows.forEach(rowEl => {
-    rowEl.addEventListener('click', () => {
+    rowEl.addEventListener('click', (e) => {
       if (state.pendingPreview || !state.activeTable) return
       const rowIndex = Number(rowEl.dataset.rowIndex)
       if (!Number.isInteger(rowIndex)) return
 
-      if (state.selectedRowIndices.includes(rowIndex)) {
-        state.selectedRowIndices = state.selectedRowIndices.filter(i => i !== rowIndex)
-        rowEl.classList.remove('selected')
+      const multiSelect = e.ctrlKey || e.metaKey
+
+      if (multiSelect) {
+        if (state.selectedRowIndices.includes(rowIndex)) {
+          state.selectedRowIndices = state.selectedRowIndices.filter(i => i !== rowIndex)
+        } else {
+          state.selectedRowIndices.push(rowIndex)
+        }
       } else {
-        state.selectedRowIndices.push(rowIndex)
-        rowEl.classList.add('selected')
+        state.selectedRowIndices = [rowIndex]
       }
+
+      rows.forEach(el => {
+        const idx = Number(el.dataset.rowIndex)
+        el.classList.toggle('selected', state.selectedRowIndices.includes(idx))
+      })
 
       refreshEntryButtons()
     })
