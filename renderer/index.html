@@ -200,6 +200,7 @@
           placeholder="e.g. Show the top 10 customers by total spend in the last 30 days"
         ></textarea>
         <button class="run-btn" id="runBtn">Run →</button>
+        <button class="filter-toggle-btn" id="tableEditorBtn" title="Open table editor">Table Edit</button>
         <button class="filter-toggle-btn" id="filterToggleBtn" title="Show filters">⧉ Filter</button>
       </div>
     </div>
@@ -285,6 +286,113 @@
             </div>
           </div>
 
+        </div>
+      </div>
+
+      <!-- STATE: table editor screen -->
+      <div class="table-editor-screen hidden" id="tableEditorScreen">
+        <div class="table-editor-toolbar">
+          <div class="table-editor-title-wrap">
+            <div class="table-editor-kicker">Table Editor</div>
+            <div class="table-editor-title">Schema + Data Changes</div>
+          </div>
+          <button class="btn-ghost" id="editorBackBtn">Back to Query View</button>
+        </div>
+
+        <div class="table-editor-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">Create Table</span>
+            </div>
+            <div class="editor-form">
+              <label class="field-label" for="createTableNameInput">Table name</label>
+              <input class="field-input mono" id="createTableNameInput" type="text" placeholder="e.g. audit_log" />
+
+              <label class="field-label" for="createTableColsInput">Columns (SQL)</label>
+              <textarea class="query-input editor-textarea mono" id="createTableColsInput" rows="5" placeholder="id SERIAL PRIMARY KEY,&#10;event_name TEXT NOT NULL,&#10;created_at TIMESTAMP NOT NULL DEFAULT NOW()"></textarea>
+
+              <button class="btn-primary" id="createTablePreviewBtn">Preview Create Table</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">Drop Table</span>
+            </div>
+            <div class="editor-form">
+              <label class="field-label" for="dropTableSelect">Target table</label>
+              <select class="filter-select editor-select" id="dropTableSelect"></select>
+
+              <button class="btn-ghost" id="dropTablePreviewBtn">Preview Drop Table</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">Columns</span>
+            </div>
+            <div class="editor-form">
+              <label class="field-label" for="alterTableSelect">Table</label>
+              <select class="filter-select editor-select" id="alterTableSelect"></select>
+
+              <label class="field-label" for="addColumnNameInput">Add column name</label>
+              <input class="field-input mono" id="addColumnNameInput" type="text" placeholder="e.g. source_ip" />
+
+              <label class="field-label" for="addColumnTypeInput">Add column type</label>
+              <input class="field-input mono" id="addColumnTypeInput" type="text" placeholder="e.g. VARCHAR(45)" />
+
+              <button class="btn-ghost" id="addColumnPreviewBtn">Preview Add Column</button>
+
+              <label class="field-label" for="dropColumnSelect">Drop column</label>
+              <select class="filter-select editor-select" id="dropColumnSelect"></select>
+
+              <button class="btn-ghost" id="dropColumnPreviewBtn">Preview Drop Column</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">Data + SQL</span>
+            </div>
+            <div class="editor-form">
+              <label class="field-label" for="editorTableSelect">Browse table</label>
+              <div class="editor-inline-actions">
+                <select class="filter-select editor-select" id="editorTableSelect"></select>
+                <button class="btn-ghost" id="editorLoadTableBtn">Load</button>
+              </div>
+
+              <label class="field-label" for="editorSqlInput">Custom SQL</label>
+              <textarea class="query-input editor-textarea mono" id="editorSqlInput" rows="5" placeholder="Write INSERT/UPDATE/DELETE/ALTER/CREATE/DROP SQL and preview it"></textarea>
+
+              <button class="btn-primary" id="editorRunSqlBtn">Run In Editor</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel hidden" id="editorCommitPanel">
+          <div class="panel-head">
+            <span class="panel-title">Editor Commit Preview</span>
+            <span class="badge badge-pending">pending</span>
+          </div>
+          <div class="preview-summary" id="editorCommitSummary">No staged edit yet.</div>
+          <div class="sql-body" id="editorCommitSql"></div>
+          <div class="preview-actions">
+            <button class="btn-ghost" id="editorUndoBtn">Undo</button>
+            <button class="btn-primary" id="editorCommitBtn">Confirm Commit</button>
+          </div>
+        </div>
+
+        <div class="panel hidden" id="editorResultsPanel">
+          <div class="panel-head">
+            <span class="panel-title">Editor Data View</span>
+          </div>
+          <div class="results-scroll">
+            <table>
+              <thead id="editorResultsHead"></thead>
+              <tbody id="editorResultsBody"></tbody>
+            </table>
+          </div>
+          <div class="results-footer" id="editorResultsFooter"></div>
         </div>
       </div>
 

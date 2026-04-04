@@ -231,13 +231,13 @@ ipcMain.handle('db:preview-change', async (_event, { sql, tableHint }) => {
     }
 
     const targetTable = (tableHint || extractTargetTable(sql) || '').trim()
-    const before = targetTable ? await fetchTableSnapshot(targetTable) : { fields: [], rows: [] }
+    const before = targetTable ? await safeFetchTableSnapshot(targetTable) : { fields: [], rows: [] }
 
     await beginTransaction()
     pendingPreview = true
 
     const execResult = await executeSql(sql)
-    const after = targetTable ? await fetchTableSnapshot(targetTable) : { fields: [], rows: [] }
+    const after = targetTable ? await safeFetchTableSnapshot(targetTable) : { fields: [], rows: [] }
 
     return {
       ok: true,
@@ -343,6 +343,24 @@ function quoteIdentifier(tableName) {
 async function fetchTableSnapshot(tableName) {
   const tableRef = quoteIdentifier(tableName)
   return executeSql(`SELECT * FROM ${tableRef} LIMIT 100`)
+}
+
+async function safeFetchTableSnapshot(tableName) {
+  try {
+    return await fetchTableSnapshot(tableName)
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      return { fields: [], rows: [], rowCount: 0 }
+    }
+    throw err
+  }
+}
+
+function isMissingTableError(err) {
+  const msg = String(err?.message || '').toLowerCase()
+  return msg.includes('does not exist')
+    || msg.includes('unknown table')
+    || msg.includes('no such table')
 }
 
 async function beginTransaction() {

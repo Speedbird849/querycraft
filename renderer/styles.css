@@ -22,10 +22,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   --mono:        'DM Mono', monospace;
   --r:           8px;
   --r-lg:        12px;
-  --motion-fast: 140ms;
-  --motion-base: 220ms;
-  --motion-slow: 320ms;
-  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
@@ -42,26 +38,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     "statusbar statusbar";
 }
 
-/* Shared subtle motion for interactive controls */
-button,
-.driver-tab,
-.schema-card,
-.schema-table,
-.history-item,
-.filter-pill,
-.filter-btn,
-.filter-toggle-btn,
-.run-btn,
-.topbar-btn {
-  transition:
-    background-color var(--motion-fast) var(--ease-soft),
-    border-color var(--motion-fast) var(--ease-soft),
-    color var(--motion-fast) var(--ease-soft),
-    opacity var(--motion-fast) var(--ease-soft),
-    transform var(--motion-fast) var(--ease-soft),
-    box-shadow var(--motion-base) var(--ease-soft);
-}
-
 /* ══ TOPBAR ══ */
 .topbar {
   grid-area: topbar;
@@ -72,7 +48,6 @@ button,
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;   /* makes the topbar draggable as a native titlebar */
-  animation: bar-in var(--motion-slow) var(--ease-soft);
 }
 
 /* Buttons/inputs inside topbar must opt out of dragging */
@@ -116,7 +91,6 @@ button,
   transition: all 0.15s;
 }
 .topbar-btn:hover { background: var(--surface2); color: var(--text); }
-.topbar-btn:hover { transform: translateY(-1px); }
 .topbar-btn.btn-connect    { border-color: rgba(74,222,128,0.35); color: rgba(74,222,128,0.8); }
 .topbar-btn.btn-connect:hover    { background: rgba(74,222,128,0.08); color: var(--accent); }
 .topbar-btn.btn-disconnect { border-color: rgba(248,113,113,0.35); color: rgba(248,113,113,0.8); }
@@ -345,7 +319,6 @@ button,
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: sidebar-in var(--motion-slow) var(--ease-soft);
 }
 
 .sidebar-section {
@@ -380,7 +353,6 @@ button,
   border: 1px solid var(--border);
   border-radius: var(--r);
   overflow: hidden;
-  animation: item-fade-in var(--motion-slow) var(--ease-soft);
 }
 
 .schema-table-header {
@@ -396,7 +368,6 @@ button,
   user-select: none;
 }
 .schema-table-header:hover { background: var(--surface3); }
-.schema-table-header:hover { transform: translateX(1px); }
 .schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; }
 .schema-table-header .tbl-chevron { margin-left: auto; color: var(--faint); font-size: 10px; }
 
@@ -427,7 +398,6 @@ button,
   cursor: pointer;
 }
 .history-item:hover { background: var(--surface2); }
-.history-item:hover { transform: translateX(1px); }
 .history-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); margin-top: 5px; flex-shrink: 0; }
 .history-text { font-size: 11px; color: var(--muted); line-height: 1.4; }
 
@@ -437,7 +407,6 @@ button,
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: content-in var(--motion-slow) var(--ease-soft);
 }
 
 /* Filter bar */
@@ -457,7 +426,6 @@ button,
   display: flex;
   align-items: center;
   gap: 6px;
-  animation: item-fade-in var(--motion-base) var(--ease-soft);
 }
 
 .filter-check {
@@ -573,7 +541,6 @@ button,
 }
 .run-btn:hover { opacity: 0.85; }
 .run-btn:active { opacity: 0.7; }
-.run-btn:hover { transform: translateY(-1px); }
 
 .filter-toggle-btn {
   padding: 0 14px;
@@ -590,11 +557,20 @@ button,
   align-self: flex-start;
 }
 .filter-toggle-btn:hover { background: var(--surface2); color: var(--text); }
-.filter-toggle-btn:hover { transform: translateY(-1px); }
 .filter-toggle-btn.active {
   background: var(--accent-dim);
   border-color: rgba(74,222,128,0.3);
   color: var(--accent);
+}
+.filter-toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#tableEditorBtn.active {
+  background: rgba(96,165,250,0.13);
+  border-color: rgba(96,165,250,0.38);
+  color: var(--blue);
 }
 
 /* Output area */
@@ -613,14 +589,74 @@ button,
   gap: 14px;
 }
 
+.table-editor-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.table-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: linear-gradient(120deg, rgba(96,165,250,0.08), rgba(74,222,128,0.05));
+}
+
+.table-editor-kicker {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.table-editor-title {
+  font-size: 15px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.table-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.editor-form {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+}
+
+.editor-select {
+  width: 100%;
+  min-height: 34px;
+}
+
+.editor-textarea {
+  min-height: 104px;
+  max-height: 180px;
+}
+
+.editor-inline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-inline-actions .editor-select {
+  flex: 1;
+}
+
 .comparison-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
-  transition:
-    gap var(--motion-base) var(--ease-soft),
-    grid-template-columns var(--motion-base) var(--ease-soft);
 }
 
 .comparison-grid.preview-active {
@@ -665,7 +701,6 @@ button,
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   overflow: hidden;
-  animation: panel-in var(--motion-base) var(--ease-soft);
 }
 
 .panel-head {
@@ -765,7 +800,6 @@ tbody td {
 }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--surface2); }
-tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
 
 .result-cell {
   cursor: text;
@@ -795,7 +829,6 @@ tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
   font-family: var(--mono);
   font-size: 11px;
   outline: none;
-  transition: border-color var(--motion-fast) var(--ease-soft), box-shadow var(--motion-fast) var(--ease-soft);
 }
 
 .entry-cell-input:focus {
@@ -868,7 +901,7 @@ tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
   gap: 8px;
   padding: 12px 14px;
   border-top: 1px solid var(--border);
-  background: var(--surface2);
+  background: var(--bg);
 }
 
 /* ══ STATUS BAR ══ */
@@ -918,16 +951,9 @@ tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
   border-radius: var(--r-lg);
   overflow: hidden;
   cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-soft),
-    transform var(--motion-fast) var(--ease-soft),
-    box-shadow var(--motion-base) var(--ease-soft);
+  transition: border-color 0.15s;
 }
-.schema-card:hover {
-  border-color: var(--border2);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-}
+.schema-card:hover { border-color: var(--border2); }
 .schema-card:hover .schema-card-head { background: var(--surface3); }
 
 .schema-card-head {
@@ -999,39 +1025,12 @@ tbody tr { transition: background-color var(--motion-fast) var(--ease-soft); }
   .comparison-grid.preview-active {
     grid-template-columns: 1fr;
   }
-}
 
-@keyframes bar-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes sidebar-in {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes content-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes panel-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes item-fade-in {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
+  .table-editor-grid {
+    grid-template-columns: 1fr;
   }
-
+}
+@media (prefers-reduced-motion: reduce) {
   #previewPanel.preview-animate {
     animation: none;
   }
