@@ -111,6 +111,7 @@ const state = {
   resultRightLabel: '',
   entryDraftActive: false,
   entryDraftValues: {},
+  cellEditDraft: null,  // { rowIndex, field, value, originalValue }
 }
 
 /* ══════════════════════════════════════════
@@ -332,6 +333,7 @@ async function handleDisconnect() {
   state.resultRightLabel = ''
   state.entryDraftActive = false
   state.entryDraftValues = {}
+  state.cellEditDraft = null
 
   setConnected(false)
 
@@ -746,6 +748,7 @@ async function runMutationPreview(sql) {
   state.selectedRowIndices = []
   state.entryDraftActive = false
   state.entryDraftValues = {}
+  state.cellEditDraft = null
   refreshEntryButtons()
 
   sqlBody.textContent = sql
@@ -778,6 +781,7 @@ async function commitPreview() {
   state.selectedRowIndices = []
   state.entryDraftActive = false
   state.entryDraftValues = {}
+  state.cellEditDraft = null
   previewPanel.classList.add('hidden')
   refreshEntryButtons()
   setStatus('Changes committed')
@@ -808,6 +812,7 @@ async function undoPreview() {
   state.selectedRowIndices = []
   state.entryDraftActive = false
   state.entryDraftValues = {}
+  state.cellEditDraft = null
   previewPanel.classList.add('hidden')
   previewSummary.textContent = 'Preview rolled back. No changes were saved.'
   refreshEntryButtons()
@@ -851,6 +856,7 @@ async function handleAddEntry() {
   if (!state.activeTable || state.pendingPreview) return
   if (!state.resultFields.length) return
 
+  state.cellEditDraft = null
   state.entryDraftActive = true
   state.entryDraftValues = {}
   state.selectedRowIndices = []
@@ -892,6 +898,68 @@ function handleCancelEntry() {
   state.entryDraftValues = {}
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
   refreshEntryButtons()
+}
+
+function startCellEdit(rowIndex, field) {
+  if (!state.activeTable || state.pendingPreview || state.entryDraftActive) return
+
+  const row = state.resultRows[rowIndex]
+  if (!row || !(field in row)) return
+
+  const originalValue = row[field]
+  state.cellEditDraft = {
+    rowIndex,
+    field,
+    value: originalValue === null || originalValue === undefined ? '' : String(originalValue),
+    originalValue,
+  }
+
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+}
+
+function cancelCellEdit() {
+  if (!state.cellEditDraft) return
+  state.cellEditDraft = null
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+}
+
+async function saveCellEdit() {
+  if (!state.cellEditDraft || !state.activeTable || state.pendingPreview) return
+
+  const { rowIndex, field, value, originalValue } = state.cellEditDraft
+  const normalizedOriginal = originalValue === null || originalValue === undefined ? '' : String(originalValue)
+  if (value === normalizedOriginal) {
+    cancelCellEdit()
+    return
+  }
+
+  const pk = getPrimaryKeyColumn(state.activeTable)
+  if (!pk) {
+    showPanels('error')
+    errorBody.textContent = 'Inline edit requires a primary key column on the selected table.'
+    setStatus('Cannot edit without primary key')
+    cancelCellEdit()
+    return
+  }
+
+  const row = state.resultRows[rowIndex]
+  const pkValue = row ? row[pk.column_name] : undefined
+  if (pkValue === undefined || pkValue === null) {
+    showPanels('error')
+    errorBody.textContent = `Inline edit failed: missing primary key value (${pk.column_name}) on selected row.`
+    setStatus('Cannot edit selected row')
+    cancelCellEdit()
+    return
+  }
+
+  const tableRef = quoteTableIdentifier(state.activeTable)
+  const targetCol = quoteColumnIdentifier(field)
+  const pkCol = quoteColumnIdentifier(pk.column_name)
+  const sql = `UPDATE ${tableRef} SET ${targetCol} = ${toSqlInputLiteral(value)} WHERE ${pkCol} = ${toSqlLiteral(pkValue)};`
+
+  state.cellEditDraft = null
+  queryInput.value = sql
+  await runQuery(sql)
 }
 
 async function handleRemoveEntry() {
@@ -977,9 +1045,10 @@ function refreshEntryButtons() {
   const hasPendingPreview = Boolean(state.pendingPreview)
   const hasPk = Boolean(getPrimaryKeyColumn(state.activeTable))
   const hasResultFields = state.resultFields.length > 0
-  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive
+  const hasCellEdit = Boolean(state.cellEditDraft)
+  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive && !hasCellEdit
 
-  addEntryBtn.disabled = !hasTable || hasPendingPreview || state.entryDraftActive || !hasResultFields
+  addEntryBtn.disabled = !hasTable || hasPendingPreview || state.entryDraftActive || hasCellEdit || !hasResultFields
   removeEntryBtn.disabled = !canRemove
   saveEntryBtn.disabled = !state.entryDraftActive
   cancelEntryBtn.disabled = !state.entryDraftActive
@@ -999,15 +1068,27 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   state.selectedRowIndices = []
   state.resultRightLabel = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
 
+  if (state.cellEditDraft && !rows[state.cellEditDraft.rowIndex]) {
+    state.cellEditDraft = null
+  }
+
   // Header row
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
 
   // Body rows
   const dataRowsHtml = rows.map((row, index) =>
     `<tr class="result-row" data-row-index="${index}">` + fields.map(f => {
+      const isEditing = state.cellEditDraft
+        && state.cellEditDraft.rowIndex === index
+        && state.cellEditDraft.field === f
+
+      if (isEditing) {
+        return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
+      }
+
       const val = row[f]
-      if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
-      return `<td>${val}</td>`
+      if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
+      return `<td class="result-cell" data-field="${escapeHtml(f)}">${val}</td>`
     }).join('') + '</tr>'
   ).join('')
 
@@ -1029,6 +1110,8 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${state.resultRightLabel}</span>`
 
   bindEntryRowInputs()
+  bindCellEditInput()
+  bindResultCellEditing()
   bindResultRowSelection()
   refreshEntryButtons()
 }
@@ -1042,9 +1125,9 @@ function bindEntryRowInputs() {
     })
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'Enter') {
         e.preventDefault()
-        handleSaveEntry()
+        void handleSaveEntry()
       }
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -1056,11 +1139,87 @@ function bindEntryRowInputs() {
   if (inputs.length > 0) inputs[0].focus()
 }
 
+function bindCellEditInput() {
+  const input = resultsBody.querySelector('.cell-edit-input')
+  if (!input) return
+
+  let cancelled = false
+
+  input.addEventListener('input', (e) => {
+    if (!state.cellEditDraft) return
+    state.cellEditDraft.value = e.currentTarget.value
+    autoSizeCellEditInput(e.currentTarget)
+  })
+
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      await saveCellEdit()
+      return
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelled = true
+      cancelCellEdit()
+    }
+  })
+
+  input.addEventListener('blur', async () => {
+    if (cancelled) return
+    await saveCellEdit()
+  })
+
+  autoSizeCellEditInput(input)
+  input.focus()
+  input.select()
+}
+
+function autoSizeCellEditInput(input) {
+  const cell = input.closest('td')
+  if (!cell) return
+
+  const computed = window.getComputedStyle(input)
+  const canvas = autoSizeCellEditInput._canvas || (autoSizeCellEditInput._canvas = document.createElement('canvas'))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  ctx.font = `${computed.fontStyle} ${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`
+  const text = input.value || input.placeholder || ''
+  const textWidth = ctx.measureText(text).width
+
+  const maxWidth = Math.max(52, cell.clientWidth - 14)
+  const targetWidth = Math.min(maxWidth, Math.max(52, Math.ceil(textWidth + 20)))
+
+  input.style.width = `${targetWidth}px`
+  input.style.maxWidth = `${maxWidth}px`
+}
+
+function bindResultCellEditing() {
+  const cells = resultsBody.querySelectorAll('.result-row .result-cell')
+  cells.forEach(cellEl => {
+    cellEl.addEventListener('dblclick', (e) => {
+      if (state.pendingPreview || state.entryDraftActive) return
+
+      const rowEl = e.currentTarget.closest('.result-row')
+      if (!rowEl) return
+
+      const rowIndex = Number(rowEl.dataset.rowIndex)
+      const field = e.currentTarget.dataset.field
+      if (!Number.isInteger(rowIndex) || !field) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      startCellEdit(rowIndex, field)
+    })
+  })
+}
+
 function bindResultRowSelection() {
   const rows = resultsBody.querySelectorAll('.result-row')
   rows.forEach(rowEl => {
     rowEl.addEventListener('click', (e) => {
-      if (state.pendingPreview || !state.activeTable || state.entryDraftActive) return
+      if (state.pendingPreview || !state.activeTable || state.entryDraftActive || state.cellEditDraft) return
       const rowIndex = Number(rowEl.dataset.rowIndex)
       if (!Number.isInteger(rowIndex)) return
 
