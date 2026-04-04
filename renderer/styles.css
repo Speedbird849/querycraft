@@ -329,6 +329,38 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .sidebar-section + .sidebar-section { border-top: 1px solid var(--border); flex: 0 0 auto; max-height: 200px; }
 
+.sidebar-action-row {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-action-btn {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--r);
+  border: 1px solid rgba(74,222,128,0.35);
+  background: rgba(74,222,128,0.12);
+  color: rgba(74,222,128,0.95);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sidebar-action-btn:hover:not(:disabled) {
+  background: rgba(74,222,128,0.18);
+}
+
+.sidebar-action-btn.active {
+  background: rgba(96,165,250,0.13);
+  border-color: rgba(96,165,250,0.38);
+  color: var(--blue);
+}
+
+.sidebar-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .sidebar-label {
   padding: 12px 14px 6px;
   font-size: 10px;
@@ -565,12 +597,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .filter-toggle-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-#tableEditorBtn.active {
-  background: rgba(96,165,250,0.13);
-  border-color: rgba(96,165,250,0.38);
-  color: var(--blue);
 }
 
 /* Output area */

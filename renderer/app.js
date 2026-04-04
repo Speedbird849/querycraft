@@ -70,7 +70,6 @@ const sqlPanel       = document.getElementById('sqlPanel')
 const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
 const tableEditorScreen = document.getElementById('tableEditorScreen')
-const editorBackBtn = document.getElementById('editorBackBtn')
 const createTableNameInput = document.getElementById('createTableNameInput')
 const createTableColsInput = document.getElementById('createTableColsInput')
 const createTablePreviewBtn = document.getElementById('createTablePreviewBtn')
@@ -800,11 +799,11 @@ runBtn.addEventListener('click', () => {
 
 tableEditorBtn.addEventListener('click', () => {
   if (!state.connected) return
-  enterTableEditor()
-})
-
-editorBackBtn.addEventListener('click', () => {
-  leaveTableEditor()
+  if (state.viewMode === 'editor') {
+    leaveTableEditor()
+  } else {
+    enterTableEditor()
+  }
 })
 
 alterTableSelect.addEventListener('change', syncDropColumnOptions)

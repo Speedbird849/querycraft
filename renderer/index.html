@@ -161,13 +161,8 @@
       </div>
     </div>
 
-    <!-- History section -->
-    <div class="sidebar-section">
-      <div class="sidebar-label">History</div>
-      <div id="historyList">
-        <!-- Populated by JS -->
-        <div class="sidebar-empty">No queries yet</div>
-      </div>
+    <div class="sidebar-action-row">
+      <button class="sidebar-action-btn" id="tableEditorBtn" title="Toggle table editor">Table Edit</button>
     </div>
 
   </aside>
@@ -200,7 +195,6 @@
           placeholder="e.g. Show the top 10 customers by total spend in the last 30 days"
         ></textarea>
         <button class="run-btn" id="runBtn">Run →</button>
-        <button class="filter-toggle-btn" id="tableEditorBtn" title="Open table editor">Table Edit</button>
         <button class="filter-toggle-btn" id="filterToggleBtn" title="Show filters">⧉ Filter</button>
       </div>
     </div>
@@ -296,7 +290,6 @@
             <div class="table-editor-kicker">Table Editor</div>
             <div class="table-editor-title">Schema + Data Changes</div>
           </div>
-          <button class="btn-ghost" id="editorBackBtn">Back to Query View</button>
         </div>
 
         <div class="table-editor-grid">
