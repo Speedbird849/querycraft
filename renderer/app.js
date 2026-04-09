@@ -257,7 +257,7 @@ function renderDbCreateColumnInputs(rawCount = 3) {
     <div class="db-create-col-row" data-index="${i}">
       <input class="field-input mono db-col-name-input" type="text" placeholder="column_${i + 1}" value="column_${i + 1}" />
       <select class="filter-select editor-select db-col-type-select">${typeOptions}</select>
-      <button class="db-col-pk-btn" type="button">Primary Key</button>
+      <button class="db-col-pk-btn" type="button">PK</button>
     </div>
   `).join('')
 
