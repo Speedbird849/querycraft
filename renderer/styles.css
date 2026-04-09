@@ -631,9 +631,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .filter-toggle-btn:hover { background: var(--surface2); color: var(--text); }
 .filter-toggle-btn.active {
-  background: var(--accent-dim);
-  border-color: rgba(74,222,128,0.3);
-  color: var(--accent);
+  border: 1px solid rgba(96,165,250,0.38);
+  background: rgba(96,165,250,0.13);
+  color: var(--blue);
 }
 .filter-toggle-btn:disabled {
   opacity: 0.45;
@@ -745,12 +745,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 .db-create-col-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 170px 110px;
+  grid-template-columns: minmax(0, 1fr) 170px max-content;
   gap: 8px;
   align-items: center;
 }
 
 .db-col-pk-btn {
+  width: fit-content;
   padding: 8px 10px;
   border-radius: 7px;
   border: 1px solid var(--border2);
