@@ -71,18 +71,23 @@ const sqlPanel       = document.getElementById('sqlPanel')
 const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
 const tableEditorScreen = document.getElementById('tableEditorScreen')
-const createTableNameInput = document.getElementById('createTableNameInput')
-const createTableColsInput = document.getElementById('createTableColsInput')
-const createTablePreviewBtn = document.getElementById('createTablePreviewBtn')
-const dropTableSelect = document.getElementById('dropTableSelect')
-const dropTablePreviewBtn = document.getElementById('dropTablePreviewBtn')
-const alterTableSelect = document.getElementById('alterTableSelect')
-const addColumnNameInput = document.getElementById('addColumnNameInput')
-const addColumnTypeInput = document.getElementById('addColumnTypeInput')
-const addColumnPreviewBtn = document.getElementById('addColumnPreviewBtn')
-const dropColumnSelect = document.getElementById('dropColumnSelect')
-const dropColumnPreviewBtn = document.getElementById('dropColumnPreviewBtn')
-const editorTableSelect = document.getElementById('editorTableSelect')
+const editorCategoryTableBtn = document.getElementById('editorCategoryTableBtn')
+const editorCategoryDatabaseBtn = document.getElementById('editorCategoryDatabaseBtn')
+const tableEditSection = document.getElementById('tableEditSection')
+const databaseEditSection = document.getElementById('databaseEditSection')
+const tableEditTableSelect = document.getElementById('tableEditTableSelect')
+const tableEditAddColumnNameInput = document.getElementById('tableEditAddColumnNameInput')
+const tableEditAddColumnTypeInput = document.getElementById('tableEditAddColumnTypeInput')
+const tableEditAddColumnPreviewBtn = document.getElementById('tableEditAddColumnPreviewBtn')
+const tableEditDropColumnSelect = document.getElementById('tableEditDropColumnSelect')
+const tableEditDropColumnPreviewBtn = document.getElementById('tableEditDropColumnPreviewBtn')
+const dbCreateTableNameInput = document.getElementById('dbCreateTableNameInput')
+const dbCreateColumnCountInput = document.getElementById('dbCreateColumnCountInput')
+const dbGenerateColumnsBtn = document.getElementById('dbGenerateColumnsBtn')
+const dbCreateColumnsContainer = document.getElementById('dbCreateColumnsContainer')
+const dbCreateTablePreviewBtn = document.getElementById('dbCreateTablePreviewBtn')
+const dbDropTableSelect = document.getElementById('dbDropTableSelect')
+const dbDropTablePreviewBtn = document.getElementById('dbDropTablePreviewBtn')
 const editorLoadTableBtn = document.getElementById('editorLoadTableBtn')
 const editorSqlInput = document.getElementById('editorSqlInput')
 const editorRunSqlBtn = document.getElementById('editorRunSqlBtn')
@@ -145,6 +150,7 @@ const state = {
 }
 
 tableEditorBtn.disabled = true
+setEditorCategory('table')
 
 function enterTableEditor() {
   if (state.pendingPreviewSource === 'main') {
@@ -153,6 +159,13 @@ function enterTableEditor() {
   }
 
   state.viewMode = 'editor'
+  setEditorCategory('table')
+  if (state.activeTable && state.tables.includes(state.activeTable)) {
+    tableEditTableSelect.value = state.activeTable
+  } else if (!tableEditTableSelect.value && state.tables.length > 0) {
+    tableEditTableSelect.value = state.tables[0]
+  }
+  syncDropColumnOptions()
   tableEditorBtn.classList.add('active')
   filterBar.classList.add('hidden')
   filterToggleBtn.classList.remove('active')
@@ -190,25 +203,101 @@ function leaveTableEditor() {
   }
 }
 
+function setEditorCategory(category) {
+  const tableMode = category === 'table'
+  editorCategoryTableBtn.classList.toggle('active', tableMode)
+  editorCategoryDatabaseBtn.classList.toggle('active', !tableMode)
+  tableEditSection.classList.toggle('hidden', !tableMode)
+  databaseEditSection.classList.toggle('hidden', tableMode)
+}
+
 function populateEditorTableSelectors() {
   const options = state.tables.length
     ? state.tables.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')
     : '<option value="">No tables</option>'
 
-  dropTableSelect.innerHTML = options
-  alterTableSelect.innerHTML = options
-  editorTableSelect.innerHTML = options
+  tableEditTableSelect.innerHTML = options
+  dbDropTableSelect.innerHTML = options
+
+  if (state.activeTable && state.tables.includes(state.activeTable)) {
+    tableEditTableSelect.value = state.activeTable
+  }
 
   syncDropColumnOptions()
 }
 
 function syncDropColumnOptions() {
-  const table = alterTableSelect.value
+  const table = tableEditTableSelect.value
   const cols = state.columns[table] || []
-  dropColumnSelect.innerHTML = cols.length
+  tableEditDropColumnSelect.innerHTML = cols.length
     ? cols.map(col => `<option value="${escapeHtml(col.column_name)}">${escapeHtml(col.column_name)}</option>`).join('')
     : '<option value="">No columns</option>'
 }
+
+const DB_COLUMN_TYPES = [
+  'INTEGER',
+  'TEXT',
+  'VARCHAR(255)',
+  'BOOLEAN',
+  'DATE',
+  'TIMESTAMP',
+  'DECIMAL(10,2)',
+]
+
+function renderDbCreateColumnInputs(rawCount = 3) {
+  const parsed = Number.parseInt(String(rawCount), 10)
+  const safeCount = Number.isFinite(parsed) ? Math.min(30, Math.max(1, parsed)) : 3
+  dbCreateColumnCountInput.value = String(safeCount)
+
+  const typeOptions = DB_COLUMN_TYPES
+    .map(type => `<option value="${type}">${type}</option>`)
+    .join('')
+
+  dbCreateColumnsContainer.innerHTML = Array.from({ length: safeCount }, (_, i) => `
+    <div class="db-create-col-row" data-index="${i}">
+      <input class="field-input mono db-col-name-input" type="text" placeholder="column_${i + 1}" value="column_${i + 1}" />
+      <select class="filter-select editor-select db-col-type-select">${typeOptions}</select>
+      <button class="db-col-pk-btn" type="button">Primary Key</button>
+    </div>
+  `).join('')
+
+  const pkButtons = Array.from(dbCreateColumnsContainer.querySelectorAll('.db-col-pk-btn'))
+  pkButtons.forEach((btn, index) => {
+    btn.classList.toggle('active', index === 0)
+    btn.addEventListener('click', () => {
+      pkButtons.forEach(other => other.classList.remove('active'))
+      btn.classList.add('active')
+    })
+  })
+}
+
+function buildCreateTableSqlFromGui() {
+  const tableName = dbCreateTableNameInput.value.trim()
+  if (!tableName) return { ok: false, error: 'Enter a table name for Create Table.' }
+
+  const rows = Array.from(dbCreateColumnsContainer.querySelectorAll('.db-create-col-row'))
+  if (!rows.length) return { ok: false, error: 'Generate at least one column first.' }
+
+  const pkIndex = rows.findIndex(row => row.querySelector('.db-col-pk-btn')?.classList.contains('active'))
+
+  const definitions = []
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i]
+    const name = row.querySelector('.db-col-name-input')?.value.trim() || ''
+    const dataType = row.querySelector('.db-col-type-select')?.value.trim() || ''
+
+    if (!name) return { ok: false, error: `Column ${i + 1} needs a name.` }
+    if (!dataType) return { ok: false, error: `Column ${i + 1} needs a datatype.` }
+
+    const pkPart = i === pkIndex ? ' PRIMARY KEY' : ''
+    definitions.push(`${quoteColumnIdentifier(name)} ${dataType}${pkPart}`)
+  }
+
+  const sql = `CREATE TABLE ${quoteTableIdentifier(tableName)} (${definitions.join(', ')});`
+  return { ok: true, sql }
+}
+
+renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
 
 function renderEditorResults(fields, rows, label = '') {
   editorResultsPanel.classList.remove('hidden')
@@ -487,10 +576,16 @@ async function handleDisconnect() {
   editorResultsHead.innerHTML = ''
   editorResultsBody.innerHTML = ''
   editorResultsFooter.innerHTML = ''
-  dropTableSelect.innerHTML = '<option value="">No tables</option>'
-  alterTableSelect.innerHTML = '<option value="">No tables</option>'
-  editorTableSelect.innerHTML = '<option value="">No tables</option>'
-  dropColumnSelect.innerHTML = '<option value="">No columns</option>'
+  tableEditTableSelect.innerHTML = '<option value="">No tables</option>'
+  tableEditDropColumnSelect.innerHTML = '<option value="">No columns</option>'
+  dbDropTableSelect.innerHTML = '<option value="">No tables</option>'
+  dbCreateTableNameInput.value = ''
+  dbCreateColumnCountInput.value = '3'
+  dbCreateColumnsContainer.innerHTML = ''
+  tableEditAddColumnNameInput.value = ''
+  tableEditAddColumnTypeInput.value = ''
+  setEditorCategory('table')
+  renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
   state.viewMode = 'query'
 
   // Reset output area back to empty state
@@ -831,46 +926,64 @@ tableEditorBtn.addEventListener('click', () => {
   }
 })
 
-alterTableSelect.addEventListener('change', syncDropColumnOptions)
-
-createTablePreviewBtn.addEventListener('click', async () => {
-  const table = createTableNameInput.value.trim()
-  const columnsSql = createTableColsInput.value.trim()
-  if (!table || !columnsSql) return
-  const sql = `CREATE TABLE ${quoteTableIdentifier(table)} (${columnsSql});`
-  editorSqlInput.value = sql
-  await runQuery(sql, 'editor')
+editorCategoryTableBtn.addEventListener('click', () => {
+  setEditorCategory('table')
 })
 
-dropTablePreviewBtn.addEventListener('click', async () => {
-  const table = dropTableSelect.value
-  if (!table) return
-  const sql = `DROP TABLE ${quoteTableIdentifier(table)};`
-  editorSqlInput.value = sql
-  await runQuery(sql, 'editor')
+editorCategoryDatabaseBtn.addEventListener('click', () => {
+  setEditorCategory('database')
 })
 
-addColumnPreviewBtn.addEventListener('click', async () => {
-  const table = alterTableSelect.value
-  const col = addColumnNameInput.value.trim()
-  const colType = addColumnTypeInput.value.trim()
+tableEditTableSelect.addEventListener('change', syncDropColumnOptions)
+
+tableEditAddColumnPreviewBtn.addEventListener('click', async () => {
+  const table = tableEditTableSelect.value
+  const col = tableEditAddColumnNameInput.value.trim()
+  const colType = tableEditAddColumnTypeInput.value.trim()
   if (!table || !col || !colType) return
   const sql = `ALTER TABLE ${quoteTableIdentifier(table)} ADD COLUMN ${quoteColumnIdentifier(col)} ${colType};`
   editorSqlInput.value = sql
   await runQuery(sql, 'editor')
 })
 
-dropColumnPreviewBtn.addEventListener('click', async () => {
-  const table = alterTableSelect.value
-  const col = dropColumnSelect.value
+tableEditDropColumnPreviewBtn.addEventListener('click', async () => {
+  const table = tableEditTableSelect.value
+  const col = tableEditDropColumnSelect.value
   if (!table || !col) return
   const sql = `ALTER TABLE ${quoteTableIdentifier(table)} DROP COLUMN ${quoteColumnIdentifier(col)};`
   editorSqlInput.value = sql
   await runQuery(sql, 'editor')
 })
 
+dbGenerateColumnsBtn.addEventListener('click', () => {
+  renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
+})
+
+dbCreateColumnCountInput.addEventListener('change', () => {
+  renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
+})
+
+dbCreateTablePreviewBtn.addEventListener('click', async () => {
+  const built = buildCreateTableSqlFromGui()
+  if (!built.ok) {
+    editorCommitSummary.textContent = built.error
+    return
+  }
+
+  editorSqlInput.value = built.sql
+  await runQuery(built.sql, 'editor')
+})
+
+dbDropTablePreviewBtn.addEventListener('click', async () => {
+  const table = dbDropTableSelect.value
+  if (!table) return
+  const sql = `DROP TABLE ${quoteTableIdentifier(table)};`
+  editorSqlInput.value = sql
+  await runQuery(sql, 'editor')
+})
+
 editorLoadTableBtn.addEventListener('click', async () => {
-  const table = editorTableSelect.value
+  const table = tableEditTableSelect.value
   if (!table) return
   const sql = `SELECT * FROM ${quoteTableIdentifier(table)} LIMIT 100;`
   editorSqlInput.value = sql

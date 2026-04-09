@@ -193,6 +193,24 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   margin-top: 4px;
 }
 
+#tableEditDropColumnPreviewBtn {
+  color: var(--danger);
+  background-color: var(--danger-dim);
+}
+
+#tableEditDropColumnPreviewBtn:hover {
+  background-color: rgba(184, 82, 82, 0.12);
+}
+
+#dbDropTablePreviewBtn {
+  color: var(--danger);
+  background-color: var(--danger-dim);
+}
+
+#dbDropTablePreviewBtn:hover {
+  background-color: rgba(184, 82, 82, 0.12);
+}
+
 .field-group { display: flex; flex-direction: column; gap: 6px; }
 
 .field-label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; }
@@ -644,6 +662,44 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   gap: 14px;
 }
 
+.editor-categories {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.editor-category-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--mono);
+  cursor: pointer;
+}
+
+.editor-category-btn:hover {
+  color: var(--text);
+  background: var(--surface3);
+}
+
+.editor-category-btn.active {
+  background: var(--accent-dim);
+  border-color: #3cb668;
+  color: var(--accent);
+}
+
+.editor-category-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .table-editor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -663,6 +719,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   min-height: 34px;
 }
 
+.editor-count-input {
+  width: 120px;
+}
+
 .editor-textarea {
   min-height: 104px;
   max-height: 180px;
@@ -675,6 +735,41 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 .editor-inline-actions .editor-select {
   flex: 1;
+}
+
+.db-create-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.db-create-col-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px 110px;
+  gap: 8px;
+  align-items: center;
+}
+
+.db-col-pk-btn {
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  cursor: pointer;
+}
+
+.db-col-pk-btn:hover {
+  color: var(--text);
+  background: var(--surface3);
+}
+
+.db-col-pk-btn.active {
+  color: var(--accent);
+  border-color: rgba(74,222,128,0.35);
+  background: rgba(74,222,128,0.1);
 }
 
 .comparison-grid {
@@ -1053,6 +1148,14 @@ tbody tr:hover td { background: var(--surface2); }
 
   .table-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .db-create-col-row {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-count-input {
+    width: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {
