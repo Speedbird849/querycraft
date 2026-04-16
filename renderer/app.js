@@ -786,6 +786,35 @@ function showFilterBar(tableName) {
   addFilter(tableName)
 }
 
+function setFilterCheckVisual(checkEl, enabled) {
+  if (!checkEl) return
+  checkEl.classList.toggle('unchecked', !enabled)
+  checkEl.setAttribute('aria-checked', enabled ? 'true' : 'false')
+  checkEl.style.opacity = ''
+}
+
+function renumberFilterPills() {
+  const pills = filterRows.querySelectorAll('.filter-pill')
+  pills.forEach((pill, index) => {
+    pill.dataset.index = String(index)
+  })
+}
+
+function syncFilterCheckUi() {
+  const pills = filterRows.querySelectorAll('.filter-pill')
+  pills.forEach((pill, index) => {
+    const checkEl = pill.querySelector('.filter-check')
+    const enabled = Boolean(state.filters[index]?.enabled)
+    setFilterCheckVisual(checkEl, enabled)
+  })
+}
+
+function updateApplyAllButtonLabel() {
+  const hasFilters = state.filters.length > 0
+  const allEnabled = hasFilters && state.filters.every(f => f.enabled)
+  applyFiltersBtn.textContent = allEnabled ? 'Unapply All' : 'Apply All'
+}
+
 function addFilter(tableName) {
   const columns = state.columns[tableName] || []
   const filterIndex = state.filters.length
@@ -820,18 +849,27 @@ function addFilter(tableName) {
 
   // Wire up changes to state
   pill.querySelector('.col-select').addEventListener('change', (e) => {
-    state.filters[filterIndex].column = e.target.value
+    const index = Number(pill.dataset.index)
+    if (!Number.isInteger(index) || !state.filters[index]) return
+    state.filters[index].column = e.target.value
   })
   pill.querySelector('.op-select').addEventListener('change', (e) => {
-    state.filters[filterIndex].operator = e.target.value
+    const index = Number(pill.dataset.index)
+    if (!Number.isInteger(index) || !state.filters[index]) return
+    state.filters[index].operator = e.target.value
   })
   pill.querySelector('.val-input').addEventListener('input', (e) => {
-    state.filters[filterIndex].value = e.target.value
+    const index = Number(pill.dataset.index)
+    if (!Number.isInteger(index) || !state.filters[index]) return
+    state.filters[index].value = e.target.value
   })
 
   pill.querySelector('.filter-check').addEventListener('click', (e) => {
-    state.filters[filterIndex].enabled = !state.filters[filterIndex].enabled
-    e.currentTarget.style.opacity = state.filters[filterIndex].enabled ? '1' : '0.3'
+    const index = Number(pill.dataset.index)
+    if (!Number.isInteger(index) || !state.filters[index]) return
+    state.filters[index].enabled = !state.filters[index].enabled
+    setFilterCheckVisual(e.currentTarget, state.filters[index].enabled)
+    updateApplyAllButtonLabel()
   })
 
   pill.querySelector('.filter-apply-btn').addEventListener('click', () => {
@@ -839,8 +877,12 @@ function addFilter(tableName) {
   })
 
   pill.querySelector('.remove-btn').addEventListener('click', () => {
+    const index = Number(pill.dataset.index)
+    if (!Number.isInteger(index)) return
     pill.remove()
-    state.filters.splice(filterIndex, 1)
+    state.filters.splice(index, 1)
+    renumberFilterPills()
+    updateApplyAllButtonLabel()
   })
 
   pill.querySelector('.add-btn').addEventListener('click', () => {
@@ -848,6 +890,9 @@ function addFilter(tableName) {
   })
 
   filterRows.appendChild(pill)
+  renumberFilterPills()
+  syncFilterCheckUi()
+  updateApplyAllButtonLabel()
 }
 
 // Filter toggle button — show/hide the filter bar
@@ -873,12 +918,24 @@ addFilterBtn.addEventListener('click', () => {
 clearFiltersBtn.addEventListener('click', () => {
   filterRows.innerHTML = ''
   state.filters = []
+  updateApplyAllButtonLabel()
   filterBar.classList.add('hidden')
   filterToggleBtn.classList.remove('active')
   if (state.activeTable) selectTable(state.activeTable)
 })
 
-applyFiltersBtn.addEventListener('click', applyFilters)
+applyFiltersBtn.addEventListener('click', () => {
+  if (!state.activeTable) return
+  if (state.filters.length > 0) {
+    const allEnabled = state.filters.every(f => f.enabled)
+    state.filters.forEach(filter => {
+      filter.enabled = !allEnabled
+    })
+    syncFilterCheckUi()
+    updateApplyAllButtonLabel()
+  }
+  applyFilters()
+})
 
 function applyFilters() {
   if (!state.activeTable) return
