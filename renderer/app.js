@@ -679,6 +679,11 @@ async function loadSchema() {
     schemaList.appendChild(buildTableNode(table, state.columns[table]))
   }
 
+  if (state.activeTable && !result.tables.includes(state.activeTable)) {
+    state.activeTable = null
+  }
+  syncActiveSchemaTable()
+
   renderSchemaOverview(result.tables)
   populateEditorTableSelectors()
   setStatus(`${result.tables.length} tables loaded`)
@@ -725,13 +730,14 @@ function renderSchemaOverview(tables) {
 function buildTableNode(tableName, columns) {
   const wrapper = document.createElement('div')
   wrapper.className = 'schema-table'
+  wrapper.dataset.tableName = tableName
 
   const header = document.createElement('div')
   header.className = 'schema-table-header'
   header.innerHTML = `
     <span class="tbl-icon">▤</span>
     <span>${tableName}</span>
-    <span class="tbl-chevron">▾</span>
+    <button class="tbl-toggle-btn" type="button" aria-label="Collapse columns" aria-expanded="true" title="Collapse">−</button>
   `
 
   const colsDiv = document.createElement('div')
@@ -745,28 +751,40 @@ function buildTableNode(tableName, columns) {
     </div>
   `).join('')
 
-  // Single click — select table (run SELECT *)
-  // Chevron click toggles columns open/closed
+  // Single click on row header selects table.
+  // Collapse/expand is only controlled by the corner toggle button.
+  const toggleBtn = header.querySelector('.tbl-toggle-btn')
   let expanded = true
   const setExpanded = (isExpanded) => {
     expanded = isExpanded
     colsDiv.style.display = expanded ? 'block' : 'none'
-    header.querySelector('.tbl-chevron').textContent = expanded ? '▾' : '▸'
+    toggleBtn.textContent = expanded ? '−' : '+'
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false')
+    toggleBtn.setAttribute('aria-label', expanded ? 'Collapse columns' : 'Expand columns')
+    toggleBtn.title = expanded ? 'Collapse' : 'Expand'
   }
 
-  header.addEventListener('click', (e) => {
-    if (e.target.classList.contains('tbl-chevron')) {
-      setExpanded(!expanded)
-    } else {
-      // Selecting a table keeps it active and toggles schema detail visibility.
-      setExpanded(!expanded)
-      selectTable(tableName)
-    }
+  toggleBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setExpanded(!expanded)
+  })
+
+  header.addEventListener('click', () => {
+    selectTable(tableName)
   })
 
   wrapper.appendChild(header)
   wrapper.appendChild(colsDiv)
   return wrapper
+}
+
+function syncActiveSchemaTable() {
+  const nodes = schemaList.querySelectorAll('.schema-table')
+  nodes.forEach(node => {
+    const isActive = node.dataset.tableName === state.activeTable
+    node.classList.toggle('active', isActive)
+  })
 }
 
 function selectTable(tableName) {
@@ -776,6 +794,7 @@ function selectTable(tableName) {
   }
 
   state.activeTable = tableName
+  syncActiveSchemaTable()
   state.selectedRowIndices = []
   refreshEntryButtons()
   const sql = `SELECT * FROM ${tableName} LIMIT 100;`

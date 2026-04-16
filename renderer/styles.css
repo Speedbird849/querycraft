@@ -426,6 +426,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border: 1px solid var(--border);
   border-radius: var(--r);
   overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.schema-table.active {
+  border-color: rgba(74,222,128,0.28);
+  box-shadow: inset 0 0 0 1px rgba(74,222,128,0.08);
 }
 
 .schema-table-header {
@@ -439,10 +445,39 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   color: var(--text);
   cursor: pointer;
   user-select: none;
+  transition: background-color 0.15s ease;
 }
 .schema-table-header:hover { background: var(--surface3); }
 .schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; }
-.schema-table-header .tbl-chevron { margin-left: auto; color: var(--faint); font-size: 10px; }
+.schema-table.active .schema-table-header { background: rgba(74,222,128,0.08); }
+.schema-table.active .schema-table-header:hover { background: rgba(74,222,128,0.12); }
+
+.tbl-toggle-btn {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tbl-toggle-btn:hover {
+  background: var(--surface3);
+  color: var(--text);
+}
+
+.schema-table.active .tbl-toggle-btn {
+  border-color: rgba(74,222,128,0.35);
+  color: var(--accent);
+}
 
 .schema-cols { padding: 5px 10px 7px; }
 
