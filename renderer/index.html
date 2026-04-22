@@ -269,25 +269,6 @@
             </div>
           </div>
 
-          <div class="panel hidden" id="previewPanel">
-            <div class="panel-head">
-              <span class="panel-title">Pending Changes Preview</span>
-              <span class="badge badge-pending" id="previewBadge">pending</span>
-            </div>
-            <div class="preview-summary" id="previewSummary">Run an UPDATE, INSERT, or DELETE to preview changes.</div>
-            <div class="results-scroll">
-              <table>
-                <thead id="previewHead"></thead>
-                <tbody id="previewBody"></tbody>
-              </table>
-            </div>
-            <div class="results-footer" id="previewFooter"></div>
-            <div class="preview-actions">
-              <button class="btn-ghost" id="undoPreviewBtn">Undo</button>
-              <button class="btn-primary" id="confirmPreviewBtn">Confirm Commit</button>
-            </div>
-          </div>
-
         </div>
       </div>
 
@@ -317,12 +298,12 @@
                 <label class="field-label" for="tableEditAddColumnTypeInput">Add column type</label>
                 <input class="field-input mono" id="tableEditAddColumnTypeInput" type="text" placeholder="e.g. VARCHAR(45)" />
 
-                <button class="btn-ghost" id="tableEditAddColumnPreviewBtn">Preview Add Column</button>
+                <button class="btn-ghost" id="tableEditAddColumnBtn">Add Column</button>
 
                 <label class="field-label" for="tableEditDropColumnSelect">Drop column</label>
                 <select class="filter-select editor-select" id="tableEditDropColumnSelect"></select>
 
-                <button class="btn-ghost" id="tableEditDropColumnPreviewBtn">Preview Drop Column</button>
+                <button class="btn-ghost" id="tableEditDropColumnBtn">Drop Column</button>
               </div>
             </div>
 
@@ -332,7 +313,7 @@
               </div>
               <div class="editor-form">
                 <label class="field-label" for="editorSqlInput">Custom SQL</label>
-                <textarea class="query-input editor-textarea mono" id="editorSqlInput" rows="5" placeholder="Write SQL for the selected table and preview it"></textarea>
+                <textarea class="query-input editor-textarea mono" id="editorSqlInput" rows="5" placeholder="Write SQL for the selected table and run it"></textarea>
 
                 <button class="btn-primary" id="editorRunSqlBtn">Run In Table Edit</button>
               </div>
@@ -358,7 +339,7 @@
 
                 <div class="db-create-columns" id="dbCreateColumnsContainer"></div>
 
-                <button class="btn-primary" id="dbCreateTablePreviewBtn">Preview Create Table</button>
+                <button class="btn-primary" id="dbCreateTableBtn">Create Table</button>
               </div>
             </div>
 
@@ -370,22 +351,9 @@
                 <label class="field-label" for="dbDropTableSelect">Target table</label>
                 <select class="filter-select editor-select" id="dbDropTableSelect"></select>
 
-                <button class="btn-ghost" id="dbDropTablePreviewBtn">Preview Drop Table</button>
+                <button class="btn-ghost" id="dbDropTableBtn">Drop Table</button>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="panel hidden" id="editorCommitPanel">
-          <div class="panel-head">
-            <span class="panel-title">Editor Commit Preview</span>
-            <span class="badge badge-pending">pending</span>
-          </div>
-          <div class="preview-summary" id="editorCommitSummary">No staged edit yet.</div>
-          <div class="sql-body" id="editorCommitSql"></div>
-          <div class="preview-actions">
-            <button class="btn-ghost" id="editorUndoBtn">Undo</button>
-            <button class="btn-primary" id="editorCommitBtn">Confirm Commit</button>
           </div>
         </div>
 

@@ -88,30 +88,24 @@ const databaseEditSection = document.getElementById('databaseEditSection')
 const tableEditTableSelect = document.getElementById('tableEditTableSelect')
 const tableEditAddColumnNameInput = document.getElementById('tableEditAddColumnNameInput')
 const tableEditAddColumnTypeInput = document.getElementById('tableEditAddColumnTypeInput')
-const tableEditAddColumnPreviewBtn = document.getElementById('tableEditAddColumnPreviewBtn')
+const tableEditAddColumnBtn = document.getElementById('tableEditAddColumnBtn')
 const tableEditDropColumnSelect = document.getElementById('tableEditDropColumnSelect')
-const tableEditDropColumnPreviewBtn = document.getElementById('tableEditDropColumnPreviewBtn')
+const tableEditDropColumnBtn = document.getElementById('tableEditDropColumnBtn')
 const dbCreateTableNameInput = document.getElementById('dbCreateTableNameInput')
 const dbCreateColumnCountInput = document.getElementById('dbCreateColumnCountInput')
 const dbGenerateColumnsBtn = document.getElementById('dbGenerateColumnsBtn')
 const dbCreateColumnsContainer = document.getElementById('dbCreateColumnsContainer')
-const dbCreateTablePreviewBtn = document.getElementById('dbCreateTablePreviewBtn')
+const dbCreateTableBtn = document.getElementById('dbCreateTableBtn')
 const dbDropTableSelect = document.getElementById('dbDropTableSelect')
-const dbDropTablePreviewBtn = document.getElementById('dbDropTablePreviewBtn')
+const dbDropTableBtn = document.getElementById('dbDropTableBtn')
 const editorLoadTableBtn = document.getElementById('editorLoadTableBtn')
 const editorSqlInput = document.getElementById('editorSqlInput')
 const editorRunSqlBtn = document.getElementById('editorRunSqlBtn')
-const editorCommitPanel = document.getElementById('editorCommitPanel')
-const editorCommitSummary = document.getElementById('editorCommitSummary')
-const editorCommitSql = document.getElementById('editorCommitSql')
-const editorUndoBtn = document.getElementById('editorUndoBtn')
-const editorCommitBtn = document.getElementById('editorCommitBtn')
 const editorResultsPanel = document.getElementById('editorResultsPanel')
 const editorResultsHead = document.getElementById('editorResultsHead')
 const editorResultsBody = document.getElementById('editorResultsBody')
 const editorResultsFooter = document.getElementById('editorResultsFooter')
 const comparisonArea = document.getElementById('comparisonArea')
-const comparisonGrid = document.querySelector('.comparison-grid')
 const resultsPanel   = document.getElementById('resultsPanel')
 const resultsHead    = document.getElementById('resultsHead')
 const resultsBody    = document.getElementById('resultsBody')
@@ -120,13 +114,6 @@ const addEntryBtn    = document.getElementById('addEntryBtn')
 const removeEntryBtn = document.getElementById('removeEntryBtn')
 const saveEntryBtn   = document.getElementById('saveEntryBtn')
 const cancelEntryBtn = document.getElementById('cancelEntryBtn')
-const previewPanel   = document.getElementById('previewPanel')
-const previewSummary = document.getElementById('previewSummary')
-const previewHead    = document.getElementById('previewHead')
-const previewBody    = document.getElementById('previewBody')
-const previewFooter  = document.getElementById('previewFooter')
-const confirmPreviewBtn = document.getElementById('confirmPreviewBtn')
-const undoPreviewBtn = document.getElementById('undoPreviewBtn')
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
 const errorReturnBtn = document.getElementById('errorReturnBtn')
@@ -148,8 +135,6 @@ const state = {
   activeTable: null,
   queryHistory: [],
   filters: [],          // [ { column, operator, value, enabled } ]
-  pendingPreview: null, // { sql, targetTable }
-  pendingPreviewSource: null, // 'main' | 'editor'
   resultFields: [],
   resultRows: [],
   selectedRowIndices: [],
@@ -163,11 +148,6 @@ tableEditorBtn.disabled = true
 setEditorCategory('table')
 
 function enterTableEditor() {
-  if (state.pendingPreviewSource === 'main') {
-    setStatus('Finish the pending query preview before opening table editor.')
-    return
-  }
-
   state.viewMode = 'editor'
   setEditorCategory('table')
   if (state.activeTable && state.tables.includes(state.activeTable)) {
@@ -187,22 +167,12 @@ function enterTableEditor() {
 }
 
 function leaveTableEditor() {
-  if (state.pendingPreviewSource === 'editor') {
-    setStatus('Confirm Commit or Undo the staged editor change before leaving.')
-    return
-  }
-
   state.viewMode = 'query'
   tableEditorBtn.classList.remove('active')
   tableEditorScreen.classList.add('hidden')
 
   if (!state.connected) {
     showPanels('empty')
-    return
-  }
-
-  if (state.pendingPreviewSource === 'main') {
-    showPanels('preview')
     return
   }
 
@@ -373,10 +343,6 @@ connectBtn.addEventListener('click', () => {
 
 refreshBtn.addEventListener('click', async () => {
   if (!state.connected) return
-  if (state.pendingPreview) {
-    setStatus('Finish the staged preview before refreshing schema.')
-    return
-  }
 
   refreshBtn.disabled = true
   try {
@@ -555,8 +521,6 @@ async function handleDisconnect() {
   state.activeTable = null
   state.filters = []
   state.queryHistory = []
-  state.pendingPreview = null
-  state.pendingPreviewSource = null
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
@@ -579,9 +543,6 @@ async function handleDisconnect() {
   filterToggleBtn.classList.remove('active')
   tableEditorBtn.classList.remove('active')
   tableEditorScreen.classList.add('hidden')
-  editorCommitPanel.classList.add('hidden')
-  editorCommitSummary.textContent = 'No staged edit yet.'
-  editorCommitSql.textContent = ''
   editorResultsPanel.classList.add('hidden')
   editorResultsHead.innerHTML = ''
   editorResultsBody.innerHTML = ''
@@ -601,7 +562,6 @@ async function handleDisconnect() {
   // Reset output area back to empty state
   sqlPanel.classList.add('hidden')
   comparisonArea.classList.add('hidden')
-  previewPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
   schemaOverview.classList.add('hidden')
@@ -611,10 +571,6 @@ async function handleDisconnect() {
   resultsHead.innerHTML = ''
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
-  previewHead.innerHTML = ''
-  previewBody.innerHTML = ''
-  previewFooter.innerHTML = ''
-  previewSummary.textContent = 'Run an UPDATE, INSERT, or DELETE to preview changes.'
   queryInput.value = ''
   queryInput.style.height = 'auto'
   refreshEntryButtons()
@@ -1022,7 +978,7 @@ editorCategoryDatabaseBtn.addEventListener('click', () => {
 
 tableEditTableSelect.addEventListener('change', syncDropColumnOptions)
 
-tableEditAddColumnPreviewBtn.addEventListener('click', async () => {
+tableEditAddColumnBtn.addEventListener('click', async () => {
   const table = tableEditTableSelect.value
   const col = tableEditAddColumnNameInput.value.trim()
   const colType = tableEditAddColumnTypeInput.value.trim()
@@ -1032,7 +988,7 @@ tableEditAddColumnPreviewBtn.addEventListener('click', async () => {
   await runQuery(sql, 'editor')
 })
 
-tableEditDropColumnPreviewBtn.addEventListener('click', async () => {
+tableEditDropColumnBtn.addEventListener('click', async () => {
   const table = tableEditTableSelect.value
   const col = tableEditDropColumnSelect.value
   if (!table || !col) return
@@ -1049,10 +1005,10 @@ dbCreateColumnCountInput.addEventListener('change', () => {
   renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
 })
 
-dbCreateTablePreviewBtn.addEventListener('click', async () => {
+dbCreateTableBtn.addEventListener('click', async () => {
   const built = buildCreateTableSqlFromGui()
   if (!built.ok) {
-    editorCommitSummary.textContent = built.error
+    setStatus(built.error)
     return
   }
 
@@ -1060,7 +1016,7 @@ dbCreateTablePreviewBtn.addEventListener('click', async () => {
   await runQuery(built.sql, 'editor')
 })
 
-dbDropTablePreviewBtn.addEventListener('click', async () => {
+dbDropTableBtn.addEventListener('click', async () => {
   const table = dbDropTableSelect.value
   if (!table) return
   const sql = `DROP TABLE ${quoteTableIdentifier(table)};`
@@ -1082,9 +1038,6 @@ editorRunSqlBtn.addEventListener('click', async () => {
   await runQuery(sql, 'editor')
 })
 
-editorCommitBtn.addEventListener('click', () => commitPreview())
-editorUndoBtn.addEventListener('click', () => undoPreview())
-
 queryInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     const sql = queryInput.value.trim()
@@ -1096,8 +1049,6 @@ addEntryBtn.addEventListener('click', handleAddEntry)
 removeEntryBtn.addEventListener('click', handleRemoveEntry)
 saveEntryBtn.addEventListener('click', handleSaveEntry)
 cancelEntryBtn.addEventListener('click', handleCancelEntry)
-confirmPreviewBtn.addEventListener('click', commitPreview)
-undoPreviewBtn.addEventListener('click', undoPreview)
 errorReturnBtn.addEventListener('click', returnToSchemaOverview)
 document.addEventListener('keydown', handleGlobalShortcuts)
 refreshEntryButtons()
@@ -1108,18 +1059,7 @@ function handleGlobalShortcuts(e) {
   if (e.key === 'Escape' && !errorPanel.classList.contains('hidden')) {
     e.preventDefault()
     returnToSchemaOverview()
-    return
   }
-
-  if (e.key !== 'Enter') return
-  if (!state.pendingPreview) return
-
-  const activeTag = document.activeElement?.tagName
-  const isInputLike = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT' || document.activeElement?.isContentEditable
-  if (isInputLike) return
-
-  e.preventDefault()
-  void commitPreview()
 }
 
 function returnToSchemaOverview() {
@@ -1135,18 +1075,7 @@ function returnToSchemaOverview() {
 
 async function runQuery(sql, source = 'main') {
   if (isMutatingSql(sql)) {
-    await runMutationPreview(sql, source)
-    return
-  }
-
-  if (state.pendingPreview) {
-    if (source === 'editor') {
-      editorCommitSummary.textContent = 'A preview is already pending. Confirm Commit or Undo first.'
-    } else {
-      showPanels('error')
-      errorBody.textContent = 'A pending preview is open. Confirm Commit or Undo before running another query.'
-    }
-    setStatus('Pending preview needs confirmation')
+    await runMutationImmediate(sql, source)
     return
   }
 
@@ -1159,7 +1088,7 @@ async function runQuery(sql, source = 'main') {
 
   if (!result.ok) {
     if (source === 'editor') {
-      editorCommitSummary.textContent = result.error
+      setStatus(`Query failed: ${result.error}`)
     } else {
       if (result.blocked) {
         showPanels('error')
@@ -1176,7 +1105,6 @@ async function runQuery(sql, source = 'main') {
 
   if (source === 'editor') {
     renderEditorResults(result.fields, result.rows, `${ms}ms`)
-    editorCommitSummary.textContent = 'Read query completed in editor.'
     setStatus(`${result.rows.length} rows · ${ms}ms`)
     return
   }
@@ -1193,177 +1121,61 @@ async function runQuery(sql, source = 'main') {
   setStatus(`${result.rows.length} rows · ${ms}ms`)
 }
 
-async function runMutationPreview(sql, source = 'main') {
-  setStatus('Building preview…')
+async function runMutationImmediate(sql, source = 'main') {
+  setStatus('Applying change…')
   if (source === 'main') showPanels('loading')
-
-  const tableHint = extractTargetTable(sql) || state.activeTable
-  const result = await window.db.previewChange(sql, tableHint)
+  const start = Date.now()
+  const result = await window.db.query(sql)
+  const ms = Date.now() - start
 
   if (!result.ok) {
     if (source === 'editor') {
-      editorCommitSummary.textContent = result.error
-      editorCommitSql.textContent = sql
-      editorCommitPanel.classList.remove('hidden')
+      setStatus(`Change failed: ${result.error}`)
     } else {
       showPanels('error')
       errorBody.textContent = result.error
     }
-    setStatus('Preview failed')
+    setStatus('Change failed')
     return
   }
 
-  state.pendingPreview = {
-    sql,
-    targetTable: result.targetTable || tableHint || null,
-  }
-  state.pendingPreviewSource = source
-  state.selectedRowIndices = []
+  const targetTable = extractTargetTable(sql) || state.activeTable
+  state.cellEditDraft = null
   state.entryDraftActive = false
   state.entryDraftValues = {}
-  state.cellEditDraft = null
-  refreshEntryButtons()
+  state.selectedRowIndices = []
 
   sqlBody.textContent = sql
-  sqlBadge.textContent = 'pending commit'
-  sqlBadge.className = 'badge badge-pending'
-
-  if (source === 'editor') {
-    editorCommitPanel.classList.remove('hidden')
-    editorCommitSql.textContent = sql
-    editorCommitSummary.textContent = result.targetTable
-      ? `Previewing staged edit on ${result.targetTable}.`
-      : 'Previewing staged schema/data edit.'
-    renderEditorResults(result.afterFields, result.afterRows, `${result.affectedRows || 0} affected`)
-    addHistory(sql)
-    setStatus('Editor preview ready. Commit or Undo.')
-    return
-  }
-
-  renderResults(result.beforeFields, result.beforeRows, null, 'current')
-  renderPreviewResults(result.afterFields, result.afterRows, result.affectedRows, result.targetTable)
-  showPanels('preview')
+  sqlBadge.textContent = '✓ applied'
+  sqlBadge.className = 'badge badge-safe'
   addHistory(sql)
-  setStatus('Preview ready. Confirm Commit to persist, or Undo to rollback.')
-}
-
-async function commitPreview() {
-  if (!state.pendingPreview) return
-
-  setPreviewButtonsDisabled(true)
-  editorCommitBtn.disabled = true
-  editorUndoBtn.disabled = true
-  const targetTable = state.pendingPreview.targetTable
-  const previewSource = state.pendingPreviewSource
-  const stagedSql = state.pendingPreview.sql
-  const result = await window.db.commitPreview()
-  setPreviewButtonsDisabled(false)
-  editorCommitBtn.disabled = false
-  editorUndoBtn.disabled = false
-
-  if (!result.ok) {
-    if (previewSource === 'editor') {
-      editorCommitSummary.textContent = result.error
-    } else {
-      showPanels('error')
-      errorBody.textContent = result.error
-    }
-    setStatus('Commit failed')
-    return
-  }
-
-  state.pendingPreview = null
-  state.pendingPreviewSource = null
-  state.selectedRowIndices = []
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  state.cellEditDraft = null
-  previewPanel.classList.add('hidden')
-  refreshEntryButtons()
-  setStatus('Changes committed')
-
   await loadSchema()
 
-  if (previewSource === 'editor') {
-    editorCommitPanel.classList.add('hidden')
-    editorCommitSummary.textContent = 'Edit committed.'
-    editorCommitSql.textContent = stagedSql
+  if (source === 'editor') {
     if (targetTable) {
-      const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
-      editorSqlInput.value = sql
-      await runQuery(sql, 'editor')
-    }
-    return
-  }
-
-  if (targetTable) {
-    const sql = `SELECT * FROM ${targetTable} LIMIT 100;`
-    queryInput.value = sql
-    runQuery(sql)
-  }
-}
-
-async function undoPreview() {
-  if (!state.pendingPreview) return
-
-  setPreviewButtonsDisabled(true)
-  editorCommitBtn.disabled = true
-  editorUndoBtn.disabled = true
-  const targetTable = state.pendingPreview.targetTable
-  const previewSource = state.pendingPreviewSource
-  const result = await window.db.undoPreview()
-  setPreviewButtonsDisabled(false)
-  editorCommitBtn.disabled = false
-  editorUndoBtn.disabled = false
-
-  if (!result.ok) {
-    if (previewSource === 'editor') {
-      editorCommitSummary.textContent = result.error
+      const refreshSql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
+      editorSqlInput.value = refreshSql
+      await runQuery(refreshSql, 'editor')
     } else {
-      showPanels('error')
-      errorBody.textContent = result.error
-    }
-    setStatus('Undo failed')
-    return
-  }
-
-  state.pendingPreview = null
-  state.pendingPreviewSource = null
-  state.selectedRowIndices = []
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  state.cellEditDraft = null
-  previewPanel.classList.add('hidden')
-  previewSummary.textContent = 'Preview rolled back. No changes were saved.'
-  refreshEntryButtons()
-  setStatus('Preview rolled back')
-
-  if (previewSource === 'editor') {
-    editorCommitPanel.classList.add('hidden')
-    editorCommitSummary.textContent = 'Preview rolled back. No schema/data edits were saved.'
-    await loadSchema()
-    if (targetTable) {
-      const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
-      editorSqlInput.value = sql
-      await runQuery(sql, 'editor')
+      renderEditorResults(result.fields || [], result.rows || [], `${result.rowCount || 0} affected · ${ms}ms`)
+      setStatus(`${result.rowCount || 0} rows affected · ${ms}ms`)
     }
     return
   }
 
   if (targetTable) {
-    const sql = `SELECT * FROM ${targetTable} LIMIT 100;`
-    queryInput.value = sql
-    runQuery(sql)
+    const refreshSql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
+    queryInput.value = refreshSql
+    await runQuery(refreshSql)
+  } else {
+    renderResults(result.fields || [], result.rows || [], ms)
+    showPanels('results')
+    setStatus(`${result.rowCount || 0} rows affected · ${ms}ms`)
   }
-}
-
-function setPreviewButtonsDisabled(disabled) {
-  confirmPreviewBtn.disabled = disabled
-  undoPreviewBtn.disabled = disabled
 }
 
 async function handleAddEntry() {
-  if (!state.activeTable || state.pendingPreview) return
+  if (!state.activeTable) return
   if (!state.resultFields.length) return
 
   state.cellEditDraft = null
@@ -1375,7 +1187,7 @@ async function handleAddEntry() {
 }
 
 async function handleSaveEntry() {
-  if (!state.activeTable || state.pendingPreview || !state.entryDraftActive) return
+  if (!state.activeTable || !state.entryDraftActive) return
 
   const tableRef = quoteTableIdentifier(state.activeTable)
   const filledFields = state.resultFields.filter(field => {
@@ -1411,7 +1223,7 @@ function handleCancelEntry() {
 }
 
 function startCellEdit(rowIndex, field) {
-  if (!state.activeTable || state.pendingPreview || state.entryDraftActive) return
+  if (!state.activeTable || state.entryDraftActive) return
 
   const row = state.resultRows[rowIndex]
   if (!row || !(field in row)) return
@@ -1434,7 +1246,7 @@ function cancelCellEdit() {
 }
 
 async function saveCellEdit() {
-  if (!state.cellEditDraft || !state.activeTable || state.pendingPreview) return
+  if (!state.cellEditDraft || !state.activeTable) return
 
   const { rowIndex, field, value, originalValue } = state.cellEditDraft
   const normalizedOriginal = originalValue === null || originalValue === undefined ? '' : String(originalValue)
@@ -1473,7 +1285,7 @@ async function saveCellEdit() {
 }
 
 async function handleRemoveEntry() {
-  if (!state.activeTable || state.pendingPreview) return
+  if (!state.activeTable) return
   if (state.selectedRowIndices.length === 0) return
 
   const pk = getPrimaryKeyColumn(state.activeTable)
@@ -1519,13 +1331,12 @@ function quoteColumnIdentifier(columnName) {
 
 function refreshEntryButtons() {
   const hasTable = Boolean(state.activeTable)
-  const hasPendingPreview = Boolean(state.pendingPreview)
   const hasPk = Boolean(getPrimaryKeyColumn(state.activeTable))
   const hasResultFields = state.resultFields.length > 0
   const hasCellEdit = Boolean(state.cellEditDraft)
-  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive && !hasCellEdit
+  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !state.entryDraftActive && !hasCellEdit
 
-  addEntryBtn.disabled = !hasTable || hasPendingPreview || state.entryDraftActive || hasCellEdit || !hasResultFields
+  addEntryBtn.disabled = !hasTable || state.entryDraftActive || hasCellEdit || !hasResultFields
   removeEntryBtn.disabled = !canRemove
   saveEntryBtn.disabled = !state.entryDraftActive
   cancelEntryBtn.disabled = !state.entryDraftActive
@@ -1676,7 +1487,7 @@ function bindResultCellEditing() {
   const cells = resultsBody.querySelectorAll('.result-row .result-cell')
   cells.forEach(cellEl => {
     cellEl.addEventListener('dblclick', (e) => {
-      if (state.pendingPreview || state.entryDraftActive) return
+      if (state.entryDraftActive) return
 
       const rowEl = e.currentTarget.closest('.result-row')
       if (!rowEl) return
@@ -1696,7 +1507,7 @@ function bindResultRowSelection() {
   const rows = resultsBody.querySelectorAll('.result-row')
   rows.forEach(rowEl => {
     rowEl.addEventListener('click', (e) => {
-      if (state.pendingPreview || !state.activeTable || state.entryDraftActive || state.cellEditDraft) return
+      if (!state.activeTable || state.entryDraftActive || state.cellEditDraft) return
       const rowIndex = Number(rowEl.dataset.rowIndex)
       if (!Number.isInteger(rowIndex)) return
 
@@ -1722,49 +1533,18 @@ function bindResultRowSelection() {
   })
 }
 
-function renderPreviewResults(fields, rows, affectedRows, targetTable) {
-  previewHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
-
-  previewBody.innerHTML = rows.map(row =>
-    '<tr>' + fields.map(f => {
-      const val = row[f]
-      if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
-      return `<td>${val}</td>`
-    }).join('') + '</tr>'
-  ).join('')
-
-  if (rows.length === 0) {
-    const colSpan = Math.max(fields.length, 1)
-    previewBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
-  }
-
-  previewSummary.textContent = targetTable
-    ? `Previewing staged changes on ${targetTable}.`
-    : 'Previewing staged changes.'
-  previewFooter.innerHTML = `<span>${rows.length} rows</span><span>${affectedRows || 0} affected</span>`
-}
-
 function showPanels(mode) {
-  setComparisonLayout(false)
   emptyState.classList.add('hidden')
   schemaOverview.classList.add('hidden')
   comparisonArea.classList.add('hidden')
   sqlPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
-  previewPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
 
   if (mode === 'results') {
     comparisonArea.classList.remove('hidden')
     sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
-  } else if (mode === 'preview') {
-    setComparisonLayout(true)
-    comparisonArea.classList.remove('hidden')
-    sqlPanel.classList.remove('hidden')
-    resultsPanel.classList.remove('hidden')
-    previewPanel.classList.remove('hidden')
-    triggerPreviewPanelAnimation()
   } else if (mode === 'error') {
     comparisonArea.classList.remove('hidden')
     errorPanel.classList.remove('hidden')
@@ -1774,17 +1554,6 @@ function showPanels(mode) {
     emptyState.classList.remove('hidden')
   }
   // 'loading' just shows nothing while waiting
-}
-
-function setComparisonLayout(showPreview) {
-  if (!comparisonGrid) return
-  comparisonGrid.classList.toggle('preview-active', showPreview)
-}
-
-function triggerPreviewPanelAnimation() {
-  previewPanel.classList.remove('preview-animate')
-  void previewPanel.offsetWidth
-  previewPanel.classList.add('preview-animate')
 }
 
 

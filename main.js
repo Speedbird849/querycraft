@@ -5,7 +5,6 @@ const path = require('path')
 let activeConnection = null   // holds the live client/db object
 let activeDriver     = null   // 'postgres' | 'mysql' | 'sqlite'
 let activeSqlitePath = null   // file path of the open sqlite db (sql.js is in-memory)
-let pendingPreview   = false  // true when a preview transaction is open
 
 // ─── Window ─────────────────────────────────────────────────────────────────
 function createWindow() {
@@ -219,84 +218,10 @@ ipcMain.handle('db:query', async (_event, { sql }) => {
 })
 
 
-// ── 6. PREVIEW A MUTATION (BEGIN + RUN + SNAPSHOT) ─────────────────────────
-ipcMain.handle('db:preview-change', async (_event, { sql, tableHint }) => {
-  if (!activeConnection) return { ok: false, error: 'Not connected' }
-  if (!isMutatingSql(sql)) return { ok: false, error: 'Only mutating SQL can be previewed.' }
-
-  try {
-    if (pendingPreview) {
-      await rollbackTransaction()
-      pendingPreview = false
-    }
-
-    const targetTable = (tableHint || extractTargetTable(sql) || '').trim()
-    const before = targetTable ? await safeFetchTableSnapshot(targetTable) : { fields: [], rows: [] }
-
-    await beginTransaction()
-    pendingPreview = true
-
-    const execResult = await executeSql(sql)
-    const after = targetTable ? await safeFetchTableSnapshot(targetTable) : { fields: [], rows: [] }
-
-    return {
-      ok: true,
-      pending: true,
-      targetTable,
-      affectedRows: execResult.rowCount,
-      beforeFields: before.fields,
-      beforeRows: before.rows,
-      afterFields: after.fields,
-      afterRows: after.rows,
-    }
-  } catch (err) {
-    if (pendingPreview) {
-      try { await rollbackTransaction() } catch (_) {}
-      pendingPreview = false
-    }
-    return { ok: false, error: err.message }
-  }
-})
-
-
-// ── 7. COMMIT PREVIEWED CHANGES ─────────────────────────────────────────────
-ipcMain.handle('db:commit-preview', async () => {
-  if (!activeConnection) return { ok: false, error: 'Not connected' }
-  if (!pendingPreview) return { ok: false, error: 'No pending preview to commit.' }
-
-  try {
-    await commitTransaction()
-    pendingPreview = false
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, error: err.message }
-  }
-})
-
-
-// ── 8. UNDO PREVIEWED CHANGES ───────────────────────────────────────────────
-ipcMain.handle('db:undo-preview', async () => {
-  if (!activeConnection) return { ok: false, error: 'Not connected' }
-  if (!pendingPreview) return { ok: true }
-
-  try {
-    await rollbackTransaction()
-    pendingPreview = false
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, error: err.message }
-  }
-})
-
-
 // ── HELPER: close the active connection ──────────────────────────────────────
 async function disconnectCurrent() {
   if (!activeConnection) return
   try {
-    if (pendingPreview) {
-      try { await rollbackTransaction() } catch (_) {}
-      pendingPreview = false
-    }
     if (activeDriver === 'postgres') await activeConnection.end()
     if (activeDriver === 'mysql')    await activeConnection.end()
     if (activeDriver === 'sqlite')   activeConnection.close()
@@ -306,91 +231,6 @@ async function disconnectCurrent() {
   activeConnection = null
   activeDriver     = null
   activeSqlitePath = null
-}
-
-function isMutatingSql(sql) {
-  return /^\s*(insert|update|delete|alter|drop|truncate|create)\b/i.test(sql)
-}
-
-function extractTargetTable(sql) {
-  const patterns = [
-    /^\s*update\s+([`"\w.]+)/i,
-    /^\s*insert\s+into\s+([`"\w.]+)/i,
-    /^\s*delete\s+from\s+([`"\w.]+)/i,
-    /^\s*alter\s+table\s+([`"\w.]+)/i,
-    /^\s*truncate\s+table\s+([`"\w.]+)/i,
-    /^\s*drop\s+table\s+([`"\w.]+)/i,
-    /^\s*create\s+table\s+([`"\w.]+)/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = sql.match(pattern)
-    if (match && match[1]) return match[1].replace(/["`]/g, '')
-  }
-  return ''
-}
-
-function quoteIdentifier(tableName) {
-  const parts = tableName.split('.').map(p => p.trim()).filter(Boolean)
-  if (parts.length === 0) throw new Error('Unable to infer target table for preview.')
-
-  if (activeDriver === 'postgres') {
-    return parts.map(p => `"${p.replace(/"/g, '""')}"`).join('.')
-  }
-  return parts.map(p => `\`${p.replace(/`/g, '``')}\``).join('.')
-}
-
-async function fetchTableSnapshot(tableName) {
-  const tableRef = quoteIdentifier(tableName)
-  return executeSql(`SELECT * FROM ${tableRef} LIMIT 100`)
-}
-
-async function safeFetchTableSnapshot(tableName) {
-  try {
-    return await fetchTableSnapshot(tableName)
-  } catch (err) {
-    if (isMissingTableError(err)) {
-      return { fields: [], rows: [], rowCount: 0 }
-    }
-    throw err
-  }
-}
-
-function isMissingTableError(err) {
-  const msg = String(err?.message || '').toLowerCase()
-  return msg.includes('does not exist')
-    || msg.includes('unknown table')
-    || msg.includes('no such table')
-}
-
-async function beginTransaction() {
-  if (activeDriver === 'postgres' || activeDriver === 'mysql') {
-    await activeConnection.query('BEGIN')
-    return
-  }
-  if (activeDriver === 'sqlite') {
-    activeConnection.run('BEGIN TRANSACTION')
-  }
-}
-
-async function commitTransaction() {
-  if (activeDriver === 'postgres' || activeDriver === 'mysql') {
-    await activeConnection.query('COMMIT')
-    return
-  }
-  if (activeDriver === 'sqlite') {
-    activeConnection.run('COMMIT')
-  }
-}
-
-async function rollbackTransaction() {
-  if (activeDriver === 'postgres' || activeDriver === 'mysql') {
-    await activeConnection.query('ROLLBACK')
-    return
-  }
-  if (activeDriver === 'sqlite') {
-    activeConnection.run('ROLLBACK')
-  }
 }
 
 async function executeSql(sql) {
