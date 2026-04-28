@@ -192,9 +192,10 @@ function setEditorCategory(category) {
 }
 
 function populateEditorTableSelectors() {
-  const options = state.tables.length
-    ? state.tables.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')
-    : '<option value="">No tables</option>'
+  let options = '<option value="">No tables</option>'
+  if (state.tables.length) {
+    options = state.tables.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')
+  }
 
   tableEditTableSelect.innerHTML = options
   dbDropTableSelect.innerHTML = options
@@ -209,9 +210,13 @@ function populateEditorTableSelectors() {
 function syncDropColumnOptions() {
   const table = tableEditTableSelect.value
   const cols = state.columns[table] || []
-  tableEditDropColumnSelect.innerHTML = cols.length
-    ? cols.map(col => `<option value="${escapeHtml(col.column_name)}">${escapeHtml(col.column_name)}</option>`).join('')
-    : '<option value="">No columns</option>'
+
+  let options = '<option value="">No columns</option>'
+  if (cols.length) {
+    options = cols.map(col => `<option value="${escapeHtml(col.column_name)}">${escapeHtml(col.column_name)}</option>`).join('')
+  }
+
+  tableEditDropColumnSelect.innerHTML = options
 }
 
 const DB_COLUMN_TYPES = [
@@ -226,7 +231,10 @@ const DB_COLUMN_TYPES = [
 
 function renderDbCreateColumnInputs(rawCount = 3) {
   const parsed = Number.parseInt(String(rawCount), 10)
-  const safeCount = Number.isFinite(parsed) ? Math.min(30, Math.max(1, parsed)) : 3
+  let safeCount = 3
+  if (Number.isFinite(parsed)) {
+    safeCount = Math.min(30, Math.max(1, parsed))
+  }
   dbCreateColumnCountInput.value = String(safeCount)
 
   const typeOptions = DB_COLUMN_TYPES
@@ -269,7 +277,10 @@ function buildCreateTableSqlFromGui() {
     if (!name) return { ok: false, error: `Column ${i + 1} needs a name.` }
     if (!dataType) return { ok: false, error: `Column ${i + 1} needs a datatype.` }
 
-    const pkPart = i === pkIndex ? ' PRIMARY KEY' : ''
+    let pkPart = ''
+    if (i === pkIndex) {
+      pkPart = ' PRIMARY KEY'
+    }
     definitions.push(`${quoteColumnIdentifier(name)} ${dataType}${pkPart}`)
   }
 
@@ -285,7 +296,13 @@ function renderEditorResults(fields, rows, label = '') {
   editorResultsBody.innerHTML = rows.map(row =>
     '<tr>' + fields.map(f => {
       const val = row[f]
-      return `<td>${val === null || val === undefined ? '<span class="null-value">NULL</span>' : escapeHtml(String(val))}</td>`
+
+      let rendered = escapeHtml(String(val))
+      if (val === null || val === undefined) {
+        rendered = '<span class="null-value">NULL</span>'
+      }
+
+      return `<td>${rendered}</td>`
     }).join('') + '</tr>'
   ).join('')
 
@@ -475,11 +492,14 @@ fieldPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') handle
 async function handleConnect() {
   // For SQLite, use the file path directly
   // For everything else, build the connection string from the fields
-  const connString = state.driver === 'sqlite'
-    ? filePathInput.value.trim()
-    : (pasteMode && rawConnInput.value.trim())
-      ? rawConnInput.value.trim()
-      : buildConnectionString()
+  let connString = ''
+  if (state.driver === 'sqlite') {
+    connString = filePathInput.value.trim()
+  } else if (pasteMode && rawConnInput.value.trim()) {
+    connString = rawConnInput.value.trim()
+  } else {
+    connString = buildConnectionString()
+  }
 
   if (state.driver === 'sqlite' && !connString) {
     showModalError('Please enter a file path.')
@@ -579,17 +599,26 @@ async function handleDisconnect() {
 }
 
 function setConnected(yes) {
-  dbDot.className = 'db-dot ' + (yes ? 'connected' : 'disconnected')
-  dbLabel.textContent = yes ? state.dbName : 'Not connected'
-  connectBtn.textContent = yes ? 'Disconnect' : 'Connect'
+  if (yes) {
+    dbDot.className = 'db-dot connected'
+    dbLabel.textContent = state.dbName
+    connectBtn.textContent = 'Disconnect'
+    statusDriver.textContent = state.driver
+    setStatus(`Connected to ${state.dbName}`)
+  } else {
+    dbDot.className = 'db-dot disconnected'
+    dbLabel.textContent = 'Not connected'
+    connectBtn.textContent = 'Connect'
+    statusDriver.textContent = ''
+    setStatus('Ready')
+  }
+
   connectBtn.dataset.confirming = 'false'
   connectBtn.classList.remove('btn-confirm')
   connectBtn.classList.toggle('btn-disconnect', yes)
   connectBtn.classList.toggle('btn-connect', !yes)
   refreshBtn.disabled = !yes
   tableEditorBtn.disabled = !yes
-  statusDriver.textContent = yes ? state.driver : ''
-  setStatus(yes ? `Connected to ${state.dbName}` : 'Ready')
 }
 
 function showModalError(msg) {
@@ -631,7 +660,13 @@ async function loadSchema() {
 
   for (const table of result.tables) {
     const colResult = await window.db.columns(table)
-    state.columns[table] = colResult.ok ? colResult.columns : []
+
+    if (colResult.ok) {
+      state.columns[table] = colResult.columns
+    } else {
+      state.columns[table] = []
+    }
+
     schemaList.appendChild(buildTableNode(table, state.columns[table]))
   }
 
@@ -646,7 +681,12 @@ async function loadSchema() {
 }
 
 function renderSchemaOverview(tables) {
-  schemaOverviewTitle.textContent = `${state.dbName} — ${tables.length} table${tables.length !== 1 ? 's' : ''}`
+  let tableSuffix = 's'
+  if (tables.length === 1) {
+    tableSuffix = ''
+  }
+
+  schemaOverviewTitle.textContent = `${state.dbName} — ${tables.length} table${tableSuffix}`
   schemaGrid.innerHTML = ''
 
   for (const table of tables) {
@@ -654,23 +694,44 @@ function renderSchemaOverview(tables) {
     const preview = cols.slice(0, 5)
     const extra   = cols.length - preview.length
 
+    let colSuffix = 's'
+    if (cols.length === 1) {
+      colSuffix = ''
+    }
+
+    const previewHtml = preview.map(col => {
+      let detailHtml = `<span class="schema-card-col-type">${col.data_type}</span>`
+      if (col.is_pk) {
+        detailHtml = '<span class="schema-card-col-pk">PK</span>'
+      }
+
+      return `
+          <div class="schema-card-col">
+            <span class="schema-card-col-name">${col.column_name}</span>
+            ${detailHtml}
+          </div>
+        `
+    }).join('')
+
+    let extraHtml = ''
+    if (extra > 0) {
+      let extraSuffix = 's'
+      if (extra === 1) {
+        extraSuffix = ''
+      }
+      extraHtml = `<div class="schema-card-more">+${extra} more column${extraSuffix}</div>`
+    }
+
     const card = document.createElement('div')
     card.className = 'schema-card'
     card.innerHTML = `
       <div class="schema-card-head">
         <span class="schema-card-name">${table}</span>
-        <span class="schema-card-count">${cols.length} col${cols.length !== 1 ? 's' : ''}</span>
+        <span class="schema-card-count">${cols.length} col${colSuffix}</span>
       </div>
       <div class="schema-card-cols">
-        ${preview.map(col => `
-          <div class="schema-card-col">
-            <span class="schema-card-col-name">${col.column_name}</span>
-            ${col.is_pk
-              ? '<span class="schema-card-col-pk">PK</span>'
-              : `<span class="schema-card-col-type">${col.data_type}</span>`}
-          </div>
-        `).join('')}
-        ${extra > 0 ? `<div class="schema-card-more">+${extra} more column${extra !== 1 ? 's' : ''}</div>` : ''}
+        ${previewHtml}
+        ${extraHtml}
       </div>
     `
 
@@ -698,14 +759,19 @@ function buildTableNode(tableName, columns) {
 
   const colsDiv = document.createElement('div')
   colsDiv.className = 'schema-cols'
-  colsDiv.innerHTML = columns.map(col => `
+  colsDiv.innerHTML = columns.map(col => {
+    let detailHtml = `<span class="col-type">${col.data_type}</span>`
+    if (col.is_pk) {
+      detailHtml = '<span class="col-pk">PK</span>'
+    }
+
+    return `
     <div class="col-row">
       <span class="col-name">${col.column_name}</span>
-      ${col.is_pk
-        ? '<span class="col-pk">PK</span>'
-        : `<span class="col-type">${col.data_type}</span>`}
+      ${detailHtml}
     </div>
-  `).join('')
+  `
+  }).join('')
 
   // Single click on row header selects table.
   // Collapse/expand is only controlled by the corner toggle button.
@@ -713,11 +779,20 @@ function buildTableNode(tableName, columns) {
   let expanded = true
   const setExpanded = (isExpanded) => {
     expanded = isExpanded
-    colsDiv.style.display = expanded ? 'block' : 'none'
-    toggleBtn.textContent = expanded ? '−' : '+'
-    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false')
-    toggleBtn.setAttribute('aria-label', expanded ? 'Collapse columns' : 'Expand columns')
-    toggleBtn.title = expanded ? 'Collapse' : 'Expand'
+
+    if (expanded) {
+      colsDiv.style.display = 'block'
+      toggleBtn.textContent = '−'
+      toggleBtn.setAttribute('aria-expanded', 'true')
+      toggleBtn.setAttribute('aria-label', 'Collapse columns')
+      toggleBtn.title = 'Collapse'
+    } else {
+      colsDiv.style.display = 'none'
+      toggleBtn.textContent = '+'
+      toggleBtn.setAttribute('aria-expanded', 'false')
+      toggleBtn.setAttribute('aria-label', 'Expand columns')
+      toggleBtn.title = 'Expand'
+    }
   }
 
   toggleBtn.addEventListener('click', (e) => {
@@ -774,7 +849,11 @@ function showFilterBar(tableName) {
 function setFilterCheckVisual(checkEl, enabled) {
   if (!checkEl) return
   checkEl.classList.toggle('unchecked', !enabled)
-  checkEl.setAttribute('aria-checked', enabled ? 'true' : 'false')
+  if (enabled) {
+    checkEl.setAttribute('aria-checked', 'true')
+  } else {
+    checkEl.setAttribute('aria-checked', 'false')
+  }
   checkEl.style.opacity = ''
 }
 
@@ -797,7 +876,12 @@ function syncFilterCheckUi() {
 function updateApplyAllButtonLabel() {
   const hasFilters = state.filters.length > 0
   const allEnabled = hasFilters && state.filters.every(f => f.enabled)
-  applyFiltersBtn.textContent = allEnabled ? 'Unapply All' : 'Apply All'
+
+  if (allEnabled) {
+    applyFiltersBtn.textContent = 'Unapply All'
+  } else {
+    applyFiltersBtn.textContent = 'Apply All'
+  }
 }
 
 function addFilter(tableName) {
@@ -933,7 +1017,10 @@ function applyFilters() {
 
   const where = active
     .map(f => {
-      const val = isNaN(f.value) ? `'${f.value}'` : f.value
+      let val = f.value
+      if (isNaN(f.value)) {
+        val = `'${f.value}'`
+      }
       return `${f.column} ${f.operator} ${val}`
     })
     .join(' AND ')
@@ -1197,9 +1284,11 @@ async function handleSaveEntry() {
 
   let sql = ''
   if (filledFields.length === 0) {
-    sql = state.driver === 'mysql'
-      ? `INSERT INTO ${tableRef} () VALUES ();`
-      : `INSERT INTO ${tableRef} DEFAULT VALUES;`
+    if (state.driver === 'mysql') {
+      sql = `INSERT INTO ${tableRef} () VALUES ();`
+    } else {
+      sql = `INSERT INTO ${tableRef} DEFAULT VALUES;`
+    }
   } else {
     const columnsSql = filledFields.map(quoteColumnIdentifier).join(', ')
     const valuesSql = filledFields.map(field => toSqlInputLiteral(state.entryDraftValues[field])).join(', ')
@@ -1229,10 +1318,15 @@ function startCellEdit(rowIndex, field) {
   if (!row || !(field in row)) return
 
   const originalValue = row[field]
+  let editableValue = ''
+  if (originalValue !== null && originalValue !== undefined) {
+    editableValue = String(originalValue)
+  }
+
   state.cellEditDraft = {
     rowIndex,
     field,
-    value: originalValue === null || originalValue === undefined ? '' : String(originalValue),
+    value: editableValue,
     originalValue,
   }
 
@@ -1249,7 +1343,12 @@ async function saveCellEdit() {
   if (!state.cellEditDraft || !state.activeTable) return
 
   const { rowIndex, field, value, originalValue } = state.cellEditDraft
-  const normalizedOriginal = originalValue === null || originalValue === undefined ? '' : String(originalValue)
+
+  let normalizedOriginal = ''
+  if (originalValue !== null && originalValue !== undefined) {
+    normalizedOriginal = String(originalValue)
+  }
+
   if (value === normalizedOriginal) {
     cancelCellEdit()
     return
@@ -1265,7 +1364,11 @@ async function saveCellEdit() {
   }
 
   const row = state.resultRows[rowIndex]
-  const pkValue = row ? row[pk.column_name] : undefined
+  let pkValue = undefined
+  if (row) {
+    pkValue = row[pk.column_name]
+  }
+
   if (pkValue === undefined || pkValue === null) {
     showPanels('error')
     errorBody.textContent = `Inline edit failed: missing primary key value (${pk.column_name}) on selected row.`
@@ -1354,7 +1457,17 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   state.resultFields = fields
   state.resultRows = rows
   state.selectedRowIndices = []
-  state.resultRightLabel = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
+
+  let computedRightLabel = ''
+  if (typeof ms === 'number') {
+    computedRightLabel = `${ms}ms`
+  }
+
+  if (rightLabel !== null && rightLabel !== undefined) {
+    state.resultRightLabel = rightLabel
+  } else {
+    state.resultRightLabel = computedRightLabel
+  }
 
   if (state.cellEditDraft && !rows[state.cellEditDraft.rowIndex]) {
     state.cellEditDraft = null
@@ -1566,11 +1679,16 @@ function addHistory(sql) {
 
   state.queryHistory.unshift(sql)
 
+  let historySuffix = ''
+  if (sql.length > 60) {
+    historySuffix = '…'
+  }
+
   const item = document.createElement('div')
   item.className = 'history-item'
   item.innerHTML = `
     <div class="history-dot"></div>
-    <div class="history-text">${sql.slice(0, 60)}${sql.length > 60 ? '…' : ''}</div>
+    <div class="history-text">${sql.slice(0, 60)}${historySuffix}</div>
   `
   item.addEventListener('click', () => {
     queryInput.value = sql

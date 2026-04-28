@@ -37,8 +37,21 @@ function quoteIdentifierPart(identifier, driver) {
 
 export function toSqlLiteral(value) {
   if (value === null || value === undefined) return 'NULL'
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL'
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+
+  if (typeof value === 'number') {
+    if (Number.isFinite(value)) {
+      return String(value)
+    }
+    return 'NULL'
+  }
+
+  if (typeof value === 'boolean') {
+    if (value) {
+      return 'TRUE'
+    }
+    return 'FALSE'
+  }
+
   return `'${String(value).replace(/'/g, "''")}'`
 }
 

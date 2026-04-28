@@ -127,7 +127,11 @@ ipcMain.handle('db:tables', async () => {
       const result = activeConnection.exec(
         `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`
       )
-      tables = result.length > 0 ? result[0].values.map(row => row[0]) : []
+      if (result.length > 0) {
+        tables = result[0].values.map(row => row[0])
+      } else {
+        tables = []
+      }
     }
 
     return { ok: true, tables }
@@ -241,8 +245,19 @@ async function executeSql(sql) {
   if (activeDriver === 'postgres') {
     const res = await activeConnection.query(sql)
     rows = res.rows || []
-    fields = res.fields ? res.fields.map(f => f.name) : []
-    rowCount = typeof res.rowCount === 'number' ? res.rowCount : rows.length
+
+    if (res.fields) {
+      fields = res.fields.map(f => f.name)
+    } else {
+      fields = []
+    }
+
+    if (typeof res.rowCount === 'number') {
+      rowCount = res.rowCount
+    } else {
+      rowCount = rows.length
+    }
+
     return { rows, fields, rowCount }
   }
 
