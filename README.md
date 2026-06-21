@@ -2,7 +2,7 @@
 
 A lightweight desktop database GUI built with Electron.
 
-Supports **PostgreSQL**, **MySQL**, and **SQLite**.
+Supports **PostgreSQL** only.
 
 ## Setup
 
@@ -19,7 +19,7 @@ npm start
 ```
 querycraft/
 ├── main.js          ← Electron main process (Node.js)
-│                      Creates the window, handles all DB connections via IPC
+│                      Creates the window, handles the PostgreSQL connection via IPC
 ├── preload.js       ← Secure bridge — exposes window.db to the renderer
 ├── renderer/
 │   ├── index.html   ← UI shell
@@ -35,15 +35,13 @@ renderer/app.js
   └── calls window.db.query(sql)          ← defined by preload.js
         └── ipcRenderer.invoke('db:query')
               └── ipcMain.handle('db:query') ← in main.js
-                    └── runs SQL via pg / mysql2 / better-sqlite3
+                    └── runs SQL via pg
                           └── returns result back up the chain
 ```
 
 ## Connecting
 
 - **PostgreSQL:** `postgres://user:password@localhost:5432/dbname`
-- **MySQL:**      `mysql://user:password@localhost:3306/dbname`
-- **SQLite:**     `/absolute/path/to/file.db`
 
 ## Keyboard shortcuts
 

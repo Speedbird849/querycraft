@@ -10,7 +10,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('db', {
   // Connect to a database
-  // driver: 'postgres' | 'mysql' | 'sqlite'
+  // driver: 'postgres'
   // connectionString: full connection URI or file path
   connect: (driver, connectionString) =>
     ipcRenderer.invoke('db:connect', { driver, connectionString }),

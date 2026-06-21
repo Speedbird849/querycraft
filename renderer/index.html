@@ -52,12 +52,10 @@
           <label class="field-label">Database type</label>
           <div class="driver-tabs">
             <button class="driver-tab active" data-driver="postgres">PostgreSQL</button>
-            <button class="driver-tab" data-driver="mysql">MySQL</button>
-            <button class="driver-tab" data-driver="sqlite">SQLite</button>
           </div>
         </div>
 
-        <!-- Postgres / MySQL fields -->
+        <!-- PostgreSQL fields -->
         <div id="hostFields">
 
           <!-- Row 1: Host + Port -->
@@ -111,18 +109,6 @@
             <span class="conn-preview-value mono" id="connPreview">postgres://localhost:5432/</span>
           </div>
 
-        </div>
-
-        <!-- SQLite file path -->
-        <div class="hidden" id="fileGroup">
-          <div class="field-group">
-            <label class="field-label">Database file</label>
-            <div class="file-row">
-              <input class="field-input mono" id="filePathInput" type="text" placeholder="C:\path\to\database.db" />
-              <button class="file-browse-btn" id="fileBrowseBtn">Browse</button>
-            </div>
-            <span class="field-hint">Select an existing .db or .sqlite file</span>
-          </div>
         </div>
 
         <!-- Raw connection string input (shown when paste mode is toggled) -->
