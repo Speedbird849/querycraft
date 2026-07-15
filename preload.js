@@ -30,4 +30,8 @@ contextBridge.exposeInMainWorld('db', {
   // Run a SQL query
   query: (sql) =>
     ipcRenderer.invoke('db:query', { sql }),
+
+  // Commit a staged batch of SQL statements in one transaction
+  commitChanges: (statements) =>
+    ipcRenderer.invoke('db:commitChanges', { statements }),
 })

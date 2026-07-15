@@ -159,6 +159,17 @@
       <button class="sidebar-action-btn" id="tableEditorBtn" title="Toggle table editor">Database Edit</button>
     </div>
 
+    <div class="sidebar-section" id="stagedChangesSection">
+      <div class="sidebar-label">Staged Changes <span class="badge badge-pending" id="stagedChangesCount">0</span></div>
+      <div class="staged-changes-list" id="stagedChangesList">
+        <div class="staged-empty">No staged changes</div>
+      </div>
+      <div class="staged-actions">
+        <button class="panel-action-btn" id="discardChangesBtn" disabled>Discard All</button>
+        <button class="btn-primary" id="commitChangesBtn" disabled>Commit All</button>
+      </div>
+    </div>
+
   </aside>
 
 
@@ -229,8 +240,8 @@
                 <span class="panel-title">Current Data</span>
                 <div class="panel-actions">
                   <button class="panel-action-btn" id="addEntryBtn">+ Add Entry</button>
-                  <button class="panel-action-btn" id="removeEntryBtn" disabled>− Remove Selected</button>
-                  <button class="panel-action-btn hidden" id="saveEntryBtn">Save Entry</button>
+                  <button class="panel-action-btn" id="removeEntryBtn" disabled>− Stage Delete</button>
+                  <button class="panel-action-btn hidden" id="saveEntryBtn">Stage Entry</button>
                   <button class="panel-action-btn hidden" id="cancelEntryBtn">Cancel</button>
                 </div>
               </div>
@@ -240,6 +251,7 @@
                   <tbody id="resultsBody"></tbody>
                 </table>
               </div>
+
               <div class="results-footer" id="resultsFooter"></div>
             </div>
 

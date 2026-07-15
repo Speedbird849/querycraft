@@ -136,6 +136,43 @@ ipcMain.handle('db:query', async (_event, { sql }) => {
 })
 
 
+// ── 6. COMMIT A STAGED CHANGE BATCH ─────────────────────────────────────────
+ipcMain.handle('db:commitChanges', async (_event, { statements }) => {
+  if (!activeConnection) return { ok: false, error: 'Not connected' }
+
+  if (!Array.isArray(statements) || statements.length === 0) {
+    return { ok: false, error: 'No staged changes to commit' }
+  }
+
+  const cleanedStatements = statements
+    .map(statement => typeof statement === 'string' ? statement.trim() : '')
+    .filter(Boolean)
+
+  if (cleanedStatements.length === 0) {
+    return { ok: false, error: 'No staged changes to commit' }
+  }
+
+  try {
+    await activeConnection.query('BEGIN')
+
+    for (const statement of cleanedStatements) {
+      await activeConnection.query(statement)
+    }
+
+    await activeConnection.query('COMMIT')
+
+    return { ok: true, executed: cleanedStatements.length }
+  } catch (err) {
+    try {
+      await activeConnection.query('ROLLBACK')
+    } catch (_) {}
+
+    return { ok: false, error: err.message }
+  }
+})
+
+
+
 // ── HELPER: close the active connection ──────────────────────────────────────
 async function disconnectCurrent() {
   if (!activeConnection) return

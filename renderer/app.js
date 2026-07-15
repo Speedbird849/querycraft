@@ -111,6 +111,10 @@ const addEntryBtn    = document.getElementById('addEntryBtn')
 const removeEntryBtn = document.getElementById('removeEntryBtn')
 const saveEntryBtn   = document.getElementById('saveEntryBtn')
 const cancelEntryBtn = document.getElementById('cancelEntryBtn')
+const stagedChangesCount = document.getElementById('stagedChangesCount')
+const stagedChangesList = document.getElementById('stagedChangesList')
+const discardChangesBtn = document.getElementById('discardChangesBtn')
+const commitChangesBtn = document.getElementById('commitChangesBtn')
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
 const errorReturnBtn = document.getElementById('errorReturnBtn')
@@ -136,6 +140,8 @@ const state = {
   resultRows: [],
   selectedRowIndices: [],
   resultRightLabel: '',
+  pendingChanges: [],
+  pendingChangeSeq: 0,
   entryDraftActive: false,
   entryDraftValues: {},
   cellEditDraft: null,  // { rowIndex, field, value, originalValue }
@@ -214,6 +220,182 @@ function syncDropColumnOptions() {
   }
 
   tableEditDropColumnSelect.innerHTML = options
+}
+
+function buildPendingRowKey(tableName, pkColumn, pkValue) {
+  return `${tableName}::${pkColumn}::${JSON.stringify(pkValue)}`
+}
+
+function buildPendingChangeId(prefix) {
+  state.pendingChangeSeq += 1
+  return `${prefix}-${Date.now()}-${state.pendingChangeSeq}`
+}
+
+function formatPendingValue(value) {
+  if (value === null || value === undefined) return 'NULL'
+  if (value === '') return '(empty)'
+  return String(value)
+}
+
+function getPendingRowState(tableName, row) {
+  const pk = getPrimaryKeyColumn(tableName)
+  if (!pk) {
+    return { isDeleted: false, fieldChanges: new Map(), rowKey: null }
+  }
+
+  const pkValue = row[pk.column_name]
+  const rowKey = buildPendingRowKey(tableName, pk.column_name, pkValue)
+  const fieldChanges = new Map()
+  let isDeleted = false
+
+  for (const change of state.pendingChanges) {
+    if (change.table !== tableName || change.rowKey !== rowKey) continue
+
+    if (change.type === 'delete') {
+      isDeleted = true
+      fieldChanges.clear()
+      continue
+    }
+
+    if (change.type === 'update') {
+      fieldChanges.set(change.field, change)
+    }
+  }
+
+  return { isDeleted, fieldChanges, rowKey }
+}
+
+function renderPendingChangesPanel() {
+  if (!stagedChangesCount || !stagedChangesList) return
+
+  stagedChangesCount.textContent = String(state.pendingChanges.length)
+
+  const section = document.getElementById('stagedChangesSection')
+  if (section) {
+    section.classList.toggle('hidden', state.pendingChanges.length === 0)
+  }
+
+  if (state.pendingChanges.length === 0) {
+    stagedChangesList.innerHTML = '<div class="staged-empty">No staged changes</div>'
+    discardChangesBtn.disabled = true
+    commitChangesBtn.disabled = true
+    return
+  }
+
+  stagedChangesList.innerHTML = state.pendingChanges.map(change => {
+    const kindLabel = change.type.toUpperCase()
+    const title = escapeHtml(change.summary || change.sql)
+    const meta = escapeHtml(change.detail || change.sql)
+    return `
+      <div class="staged-change-item" data-change-id="${escapeHtml(change.id)}">
+        <span class="staged-change-kind ${escapeHtml(change.type)}">${kindLabel}</span>
+        <div class="staged-change-copy">
+          <div class="staged-change-title">${title}</div>
+          <div class="staged-change-meta">${meta}</div>
+        </div>
+        <button class="staged-change-remove" type="button" data-change-id="${escapeHtml(change.id)}">Remove</button>
+      </div>
+    `
+  }).join('')
+
+  stagedChangesList.querySelectorAll('.staged-change-remove').forEach(button => {
+    button.addEventListener('click', () => {
+      removePendingChange(button.dataset.changeId)
+    })
+  })
+
+  discardChangesBtn.disabled = false
+  commitChangesBtn.disabled = false
+}
+
+function removePendingChange(changeId) {
+  if (!changeId) return
+
+  state.pendingChanges = state.pendingChanges.filter(change => change.id !== changeId)
+  renderPendingChangesPanel()
+
+  if (!resultsPanel.classList.contains('hidden')) {
+    renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+  } else {
+    refreshEntryButtons()
+  }
+}
+
+function stagePendingChange(change) {
+  if (!change || !change.id) return
+
+  if (change.type === 'delete') {
+    state.pendingChanges = state.pendingChanges.filter(existing => {
+      if (existing.table !== change.table) return true
+      if (existing.rowKey !== change.rowKey) return true
+      return existing.type !== 'update'
+    })
+  }
+
+  const existingIndex = state.pendingChanges.findIndex(existing => existing.id === change.id)
+  if (existingIndex >= 0) {
+    state.pendingChanges[existingIndex] = change
+  } else {
+    state.pendingChanges.push(change)
+  }
+
+  renderPendingChangesPanel()
+  refreshEntryButtons()
+}
+
+function discardPendingChanges() {
+  state.pendingChanges = []
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
+  state.cellEditDraft = null
+  state.selectedRowIndices = []
+
+  renderPendingChangesPanel()
+  refreshEntryButtons()
+
+  if (!resultsPanel.classList.contains('hidden')) {
+    renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+  }
+}
+
+async function commitPendingChanges() {
+  if (state.pendingChanges.length === 0) return
+
+  const stagedStatements = state.pendingChanges.map(change => change.sql)
+  setStatus('Committing staged changes…')
+
+  const result = await window.db.commitChanges(stagedStatements)
+  if (!result.ok) {
+    showPanels('error')
+    errorBody.textContent = result.error
+    setStatus('Commit failed')
+    return
+  }
+
+  const committedCount = state.pendingChanges.length
+  state.pendingChanges = []
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
+  state.cellEditDraft = null
+  state.selectedRowIndices = []
+
+  renderPendingChangesPanel()
+  refreshEntryButtons()
+
+  // Refresh data BEFORE loadSchema so no interleaving event handlers
+  // can render stale results between the commit and the refresh query.
+  if (state.activeTable) {
+    const refreshSql = `SELECT * FROM ${quoteTableIdentifier(state.activeTable)} LIMIT 100;`
+    queryInput.value = refreshSql
+    await runQuery(refreshSql)
+  } else {
+    renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+  }
+
+  await loadSchema()
+  schemaOverview.classList.add('hidden')
+
+  setStatus(`${committedCount} staged change${committedCount === 1 ? '' : 's'} committed`)
 }
 
 const DB_COLUMN_TYPES = [
@@ -513,6 +695,7 @@ async function handleDisconnect() {
   state.entryDraftActive = false
   state.entryDraftValues = {}
   state.cellEditDraft = null
+  state.pendingChanges = []
 
   setConnected(false)
 
@@ -542,6 +725,7 @@ async function handleDisconnect() {
   tableEditAddColumnTypeInput.value = ''
   setEditorCategory('table')
   renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
+  renderPendingChangesPanel()
   state.viewMode = 'query'
 
   // Reset output area back to empty state
@@ -1100,6 +1284,10 @@ addEntryBtn.addEventListener('click', handleAddEntry)
 removeEntryBtn.addEventListener('click', handleRemoveEntry)
 saveEntryBtn.addEventListener('click', handleSaveEntry)
 cancelEntryBtn.addEventListener('click', handleCancelEntry)
+discardChangesBtn.addEventListener('click', discardPendingChanges)
+commitChangesBtn.addEventListener('click', () => {
+  void commitPendingChanges()
+})
 errorReturnBtn.addEventListener('click', returnToSchemaOverview)
 document.addEventListener('keydown', handleGlobalShortcuts)
 refreshEntryButtons()
@@ -1255,12 +1443,25 @@ async function handleSaveEntry() {
     sql = `INSERT INTO ${tableRef} (${columnsSql}) VALUES (${valuesSql});`
   }
 
+  const detail = filledFields.length === 0
+    ? 'DEFAULT VALUES'
+    : filledFields.map(field => `${field}=${formatPendingValue(state.entryDraftValues[field])}`).join(', ')
+
   state.entryDraftActive = false
   state.entryDraftValues = {}
-  refreshEntryButtons()
+  const changeId = buildPendingChangeId('insert')
+  stagePendingChange({
+    id: changeId,
+    key: changeId,
+    type: 'insert',
+    table: state.activeTable,
+    sql,
+    summary: `Insert into ${state.activeTable}`,
+    detail,
+  })
 
-  queryInput.value = sql
-  await runQuery(sql)
+  setStatus('Insert staged')
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
 function handleCancelEntry() {
@@ -1277,17 +1478,26 @@ function startCellEdit(rowIndex, field) {
   const row = state.resultRows[rowIndex]
   if (!row || !(field in row)) return
 
+  const rowState = getPendingRowState(state.activeTable, row)
+  if (rowState.isDeleted) return
+
+  const stagedChange = rowState.fieldChanges.get(field)
+
   const originalValue = row[field]
   let editableValue = ''
   if (originalValue !== null && originalValue !== undefined) {
     editableValue = String(originalValue)
   }
 
+  if (stagedChange) {
+    editableValue = String(stagedChange.value ?? '')
+  }
+
   state.cellEditDraft = {
     rowIndex,
     field,
     value: editableValue,
-    originalValue,
+    originalValue: stagedChange ? stagedChange.value : originalValue,
   }
 
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
@@ -1337,14 +1547,32 @@ async function saveCellEdit() {
     return
   }
 
+  const rowKey = buildPendingRowKey(state.activeTable, pk.column_name, pkValue)
+  const changeId = `update::${rowKey}::${field}`
+
   const tableRef = quoteTableIdentifier(state.activeTable)
   const targetCol = quoteColumnIdentifier(field)
   const pkCol = quoteColumnIdentifier(pk.column_name)
   const sql = `UPDATE ${tableRef} SET ${targetCol} = ${toSqlInputLiteral(value)} WHERE ${pkCol} = ${toSqlLiteral(pkValue)};`
 
   state.cellEditDraft = null
-  queryInput.value = sql
-  await runQuery(sql)
+  stagePendingChange({
+    id: changeId,
+    key: changeId,
+    type: 'update',
+    table: state.activeTable,
+    rowKey,
+    pkColumn: pk.column_name,
+    pkValue,
+    field,
+    value,
+    sql,
+    summary: `Update ${state.activeTable}.${field}`,
+    detail: `${pk.column_name}=${formatPendingValue(pkValue)} · ${formatPendingValue(originalValue)} → ${formatPendingValue(value)}`,
+  })
+
+  setStatus('Update staged')
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
 async function handleRemoveEntry() {
@@ -1372,11 +1600,29 @@ async function handleRemoveEntry() {
 
   const tableRef = quoteTableIdentifier(state.activeTable)
   const colRef = quoteColumnIdentifier(pk.column_name)
-  const valuesSql = selectedValues.map(toSqlLiteral).join(', ')
-  const sql = `DELETE FROM ${tableRef} WHERE ${colRef} IN (${valuesSql});`
 
-  queryInput.value = sql
-  await runQuery(sql)
+  selectedValues.forEach(pkValue => {
+    const sql = `DELETE FROM ${tableRef} WHERE ${colRef} = ${toSqlLiteral(pkValue)};`
+    const rowKey = buildPendingRowKey(state.activeTable, pk.column_name, pkValue)
+    const changeId = `delete::${rowKey}`
+
+    stagePendingChange({
+      id: changeId,
+      key: changeId,
+      type: 'delete',
+      table: state.activeTable,
+      rowKey,
+      pkColumn: pk.column_name,
+      pkValue,
+      sql,
+      summary: `Delete ${state.activeTable} row`,
+      detail: `${pk.column_name}=${formatPendingValue(pkValue)}`,
+    })
+  })
+
+  state.selectedRowIndices = []
+  setStatus('Delete staged')
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
 function getPrimaryKeyColumn(tableName) {
@@ -1433,12 +1679,18 @@ function renderResults(fields, rows, ms, rightLabel = null) {
     state.cellEditDraft = null
   }
 
+  const activeTable = state.activeTable
+
   // Header row
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
 
   // Body rows
-  const dataRowsHtml = rows.map((row, index) =>
-    `<tr class="result-row" data-row-index="${index}">` + fields.map(f => {
+  const dataRowsHtml = rows.map((row, index) => {
+    const rowState = activeTable ? getPendingRowState(activeTable, row) : { isDeleted: false, fieldChanges: new Map() }
+    const rowClasses = ['result-row']
+    if (rowState.isDeleted) rowClasses.push('pending-delete')
+
+    return `<tr class="${rowClasses.join(' ')}" data-row-index="${index}">` + fields.map(f => {
       const isEditing = state.cellEditDraft
         && state.cellEditDraft.rowIndex === index
         && state.cellEditDraft.field === f
@@ -1447,11 +1699,18 @@ function renderResults(fields, rows, ms, rightLabel = null) {
         return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
       }
 
-      const val = row[f]
-      if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
-      return `<td class="result-cell" data-field="${escapeHtml(f)}">${val}</td>`
+      const stagedCellChange = rowState.fieldChanges.get(f)
+      const val = stagedCellChange ? stagedCellChange.value : row[f]
+      const cellClasses = ['result-cell']
+      if (stagedCellChange) cellClasses.push('pending-update')
+
+      if (val === null || val === undefined) {
+        return `<td class="${cellClasses.join(' ')}" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
+      }
+
+      return `<td class="${cellClasses.join(' ')}" data-field="${escapeHtml(f)}">${escapeHtml(String(val))}</td>`
     }).join('') + '</tr>'
-  ).join('')
+  }).join('')
 
   let draftRowHtml = ''
   if (state.entryDraftActive) {
@@ -1463,7 +1722,7 @@ function renderResults(fields, rows, ms, rightLabel = null) {
 
   resultsBody.innerHTML = draftRowHtml + dataRowsHtml
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !state.entryDraftActive) {
     const colSpan = Math.max(fields.length, 1)
     resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
   }
@@ -1474,6 +1733,7 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   bindCellEditInput()
   bindResultCellEditing()
   bindResultRowSelection()
+  renderPendingChangesPanel()
   refreshEntryButtons()
 }
 
@@ -1569,6 +1829,11 @@ function bindResultCellEditing() {
       const field = e.currentTarget.dataset.field
       if (!Number.isInteger(rowIndex) || !field) return
 
+      if (state.activeTable) {
+        const row = state.resultRows[rowIndex]
+        if (row && getPendingRowState(state.activeTable, row).isDeleted) return
+      }
+
       e.preventDefault()
       e.stopPropagation()
       startCellEdit(rowIndex, field)
@@ -1583,6 +1848,9 @@ function bindResultRowSelection() {
       if (!state.activeTable || state.entryDraftActive || state.cellEditDraft) return
       const rowIndex = Number(rowEl.dataset.rowIndex)
       if (!Number.isInteger(rowIndex)) return
+
+      const row = state.resultRows[rowIndex]
+      if (row && getPendingRowState(state.activeTable, row).isDeleted) return
 
       const multiSelect = e.ctrlKey || e.metaKey
 

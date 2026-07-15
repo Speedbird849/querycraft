@@ -2,7 +2,16 @@
 
 A lightweight desktop database GUI built with Electron.
 
-Supports **PostgreSQL** only.
+Supports **PostgreSQL**.
+
+## Tech stack
+
+- **Electron** for the desktop shell and window lifecycle.
+- **Vanilla HTML, CSS, and JavaScript** in the renderer for the interface and live table editing.
+- **Node.js + `pg`** in the main process for PostgreSQL connectivity and transactional commits.
+- **Preload IPC bridge** for a narrow, secure API between the UI and database layer.
+
+The renderer stages inserts, updates, and deletes locally, shows them in a pending-change queue, and commits the whole batch atomically through IPC.
 
 ## Setup
 
@@ -49,10 +58,15 @@ renderer/app.js
 |--------|----------|
 | Run query | Cmd/Ctrl + Enter |
 
+## Editing model
+
+- Double-click a table cell to edit it inline.
+- Row inserts and deletes are staged first instead of applying immediately.
+- Use the staged changes panel to review, remove, or commit the full batch at once.
+
 ## Next steps
 
 - [ ] Add NL-to-SQL via Claude API
-- [ ] Inline cell editing
 - [ ] Export results as CSV
 - [ ] Multiple connection tabs
 - [ ] Query formatting / syntax highlighting

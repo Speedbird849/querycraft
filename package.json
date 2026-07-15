@@ -11,6 +11,9 @@
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "electron": "^29.0.0"
+    "electron": "^43.1.1"
+  },
+  "allowScripts": {
+    "electron@29.4.6": true
   }
 }
