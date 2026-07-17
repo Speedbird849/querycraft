@@ -34,4 +34,7 @@ contextBridge.exposeInMainWorld('db', {
   // Commit a staged batch of SQL statements in one transaction
   commitChanges: (statements) =>
     ipcRenderer.invoke('db:commitChanges', { statements }),
+
+  generateSql: (prompt, schemaText) =>
+    ipcRenderer.invoke('ai:generateSql', { prompt, schemaText })
 })

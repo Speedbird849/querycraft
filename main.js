@@ -96,7 +96,8 @@ ipcMain.handle('db:columns', async (_event, { table }) => {
   if (!activeConnection) return { ok: false, error: 'Not connected' }
 
   try {
-    const res = await activeConnection.query(`
+    // 1. Get the columns (Your existing query)
+    const colRes = await activeConnection.query(`
       SELECT
         c.column_name,
         c.data_type,
@@ -114,14 +115,31 @@ ipcMain.handle('db:columns', async (_event, { table }) => {
       WHERE c.table_name = $1
       ORDER BY ordinal_position
     `, [table])
-    const columns = res.rows
+    
+    // 2. NEW: Get the Foreign Keys for this table
+    const fkRes = await activeConnection.query(`
+      SELECT
+          kcu.column_name,
+          ccu.table_name AS foreign_table_name,
+          ccu.column_name AS foreign_column_name
+      FROM
+          information_schema.table_constraints AS tc
+          JOIN information_schema.key_column_usage AS kcu
+            ON tc.constraint_name = kcu.constraint_name
+          JOIN information_schema.constraint_column_usage AS ccu
+            ON ccu.constraint_name = tc.constraint_name
+      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = $1;
+    `, [table])
 
-    return { ok: true, columns }
+    return { 
+      ok: true, 
+      columns: colRes.rows,
+      fks: fkRes.rows // Pass the foreign keys back to the frontend
+    }
   } catch (err) {
     return { ok: false, error: err.message }
   }
 })
-
 
 // ── 5. RUN A QUERY ───────────────────────────────────────────────────────────
 ipcMain.handle('db:query', async (_event, { sql }) => {
@@ -191,3 +209,47 @@ async function executeSql(sql) {
 
   return { rows, fields, rowCount }
 }
+
+ipcMain.handle('ai:generateSql', async (_event, { prompt, schemaText }) => {
+  try {
+    // SQLCoder strictly expects this format
+    const systemPrompt = `
+### Task
+Generate a SQL query to answer [QUESTION]${prompt}[/QUESTION]
+
+### Database Schema
+The query will run on a database with the following schema:
+${schemaText}
+
+### Answer
+Given the database schema, here is the SQL query that [QUESTION]${prompt}[/QUESTION]
+[SQL]
+`;
+
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'sqlcoder:7b', // Switched to SQLCoder
+        prompt: systemPrompt, // We pass the whole formatted block as the prompt
+        stream: false, 
+        options: {
+          temperature: 0.0 // Set to 0 for maximum deterministic accuracy
+        }
+      })
+    });
+
+    const data = await response.json();
+    
+    // Clean up the output (SQLCoder usually stops after the query, but might append [/SQL])
+    let sql = data.response.trim();
+    sql = sql.replace(/\[\/SQL\]/i, '').trim();
+    if (sql.startsWith('```')) {
+      sql = sql.replace(/^```(sql)?/i, '').replace(/```$/, '').trim();
+    }
+
+    return { ok: true, sql };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});

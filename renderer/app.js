@@ -126,6 +126,7 @@ const statusDriver   = document.getElementById('statusDriver')
 /* ══════════════════════════════════════════
    2. STATE
 ══════════════════════════════════════════ */
+
 const state = {
   connected: false,
   driver: 'postgres',
@@ -133,6 +134,7 @@ const state = {
   dbName: '',
   tables: [],
   columns: {},          // { tableName: [ column, ... ] }
+  fks: {},   
   activeTable: null,
   queryHistory: [],
   filters: [],          // [ { column, operator, value, enabled } ]
@@ -806,13 +808,15 @@ async function loadSchema() {
   state.tables = result.tables
   schemaList.innerHTML = ''
 
-  for (const table of result.tables) {
+    for (const table of result.tables) {
     const colResult = await window.db.columns(table)
 
     if (colResult.ok) {
       state.columns[table] = colResult.columns
+      state.fks[table] = colResult.fks || [] // Save the foreign keys
     } else {
       state.columns[table] = []
+      state.fks[table] = []
     }
 
     schemaList.appendChild(buildTableNode(table, state.columns[table]))
@@ -1189,15 +1193,57 @@ queryInput.addEventListener('input', () => {
   queryInput.style.height = queryInput.scrollHeight + 'px'
 })
 
-runBtn.addEventListener('click', () => {
-  const sql = queryInput.value.trim()
-  if (sql) runQuery(sql)
+runBtn.addEventListener('click', async () => {
+  const input = queryInput.value.trim()
+  if (!input) return
+
+  // Check if the input looks like raw SQL
+  const isSql = /^(select|insert|update|delete|create|drop|alter|with|truncate)\b/i.test(input)
+
+  if (isSql) {
+    // Run native SQL immediately
+    runQuery(input)
+  } else {
+    // Treat as Natural Language - ask SQLCoder
+    if (!state.connected) {
+      showPanels('error')
+      errorBody.textContent = 'Please connect to a database first so the AI knows your schema.'
+      return
+    }
+
+    setStatus('Drafting SQL via local AI...')
+    runBtn.disabled = true
+    runBtn.textContent = 'Thinking...'
+
+    // Inside your runBtn click listener:
+    const schemaText = buildSchemaContext(state.columns, state.fks)
+    const result = await window.db.generateSql(input, schemaText)
+
+    runBtn.disabled = false
+    runBtn.textContent = 'Run →'
+
+    if (result.ok) {
+      // Draft the AI's SQL into the input box
+      queryInput.value = result.sql
+      
+      // Auto-resize the text area
+      queryInput.style.height = 'auto'
+      queryInput.style.height = queryInput.scrollHeight + 'px'
+      
+      setStatus('SQL drafted. Review and press Run to execute.')
+      queryInput.focus()
+    } else {
+      showPanels('error')
+      errorBody.textContent = `AI Error: ${result.error}`
+      setStatus('AI generation failed')
+    }
+  }
 })
 
 tableEditorBtn.addEventListener('click', () => {
   if (!state.connected) return
   if (state.viewMode === 'editor') {
-    leaveTableEditor()
+    leaveTableEditor() 
   } else {
     enterTableEditor()
   }
@@ -1275,8 +1321,8 @@ editorRunSqlBtn.addEventListener('click', async () => {
 
 queryInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-    const sql = queryInput.value.trim()
-    if (sql) runQuery(sql)
+    e.preventDefault() // Stop standard new-line insertion
+    runBtn.click()     // Programmatically trigger the smart run button
   }
 })
 
@@ -1936,4 +1982,31 @@ function addHistory(sql) {
 
 function setStatus(msg) {
   statusMsg.textContent = msg
+}
+
+// Build a text representation of the schema using standard DDL syntax
+function buildSchemaContext(columnsState, fksState) {
+  let schemaText = '';
+  
+  for (const [table, cols] of Object.entries(columnsState)) {
+    schemaText += `CREATE TABLE ${table} (\n`;
+    
+    // Add columns
+    const colDefs = cols.map(c => {
+      let def = `  ${c.column_name} ${c.data_type}`;
+      if (c.is_pk) def += ' PRIMARY KEY';
+      return def;
+    });
+    
+    // Add Foreign Keys
+    const tableFks = fksState[table] || [];
+    tableFks.forEach(fk => {
+      colDefs.push(`  FOREIGN KEY (${fk.column_name}) REFERENCES ${fk.foreign_table_name}(${fk.foreign_column_name})`);
+    });
+    
+    schemaText += colDefs.join(',\n');
+    schemaText += '\n);\n\n';
+  }
+  
+  return schemaText;
 }
