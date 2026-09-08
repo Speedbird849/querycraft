@@ -58,10 +58,8 @@ const connPreview    = document.getElementById('connPreview')
 const pasteConnBtn   = document.getElementById('pasteConnBtn')
 const rawConnGroup   = document.getElementById('rawConnGroup')
 const rawConnInput   = document.getElementById('rawConnInput')
-
 const schemaList     = document.getElementById('schemaList')
 const historyList    = document.getElementById('historyList')
-
 const filterBar      = document.getElementById('filterBar')
 const filterToggleBtn = document.getElementById('filterToggleBtn')
 const tableEditorBtn = document.getElementById('tableEditorBtn')
@@ -69,10 +67,8 @@ const filterRows     = document.getElementById('filterRows')
 const addFilterBtn   = document.getElementById('addFilterBtn')
 const clearFiltersBtn= document.getElementById('clearFiltersBtn')
 const applyFiltersBtn= document.getElementById('applyFiltersBtn')
-
 const queryInput     = document.getElementById('queryInput')
 const runBtn         = document.getElementById('runBtn')
-
 const emptyState       = document.getElementById('emptyState')
 const schemaOverview   = document.getElementById('schemaOverview')
 const schemaOverviewTitle = document.getElementById('schemaOverviewTitle')
