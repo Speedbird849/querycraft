@@ -20,19 +20,14 @@ export function extractTargetTable(sql) {
   return ''
 }
 
-export function quoteTableIdentifier(tableName, driver = 'postgres') {
+export function quoteTableIdentifier(tableName) {
   const parts = String(tableName).split('.').map(part => part.trim()).filter(Boolean)
   if (parts.length === 0) return tableName
-  return parts.map(part => quoteIdentifierPart(part, driver)).join('.')
+  return parts.map(quoteColumnIdentifier).join('.')
 }
 
-export function quoteColumnIdentifier(columnName, driver = 'postgres') {
-  return quoteIdentifierPart(columnName, driver)
-}
-
-function quoteIdentifierPart(identifier, driver) {
-  if (driver === 'postgres') return `"${String(identifier).replace(/"/g, '""')}"`
-  return `\`${String(identifier).replace(/`/g, '``')}\``
+export function quoteColumnIdentifier(identifier) {
+  return `"${String(identifier).replace(/"/g, '""')}"`
 }
 
 export function toSqlLiteral(value) {

@@ -1,33 +1,12 @@
-/**
- * app.js  —  QueryCraft renderer
- *
- * All database calls go through window.db (exposed by preload.js).
- * No Node or Electron APIs are used directly here.
- *
- * This file is intentionally structured as plain sections so it's
- * easy to follow step by step:
- *
- *   1. Element refs
- *   2. State
- *   3. Connection modal
- *   4. Schema sidebar
- *   5. Filter bar
- *   6. Query runner
- *   7. Results renderer
- *   8. History
- *   9. Utility helpers
- */
-
 import {
   isMutatingSql,
   extractTargetTable,
-  quoteTableIdentifier as quoteTableIdentifierWithDriver,
-  quoteColumnIdentifier as quoteColumnIdentifierWithDriver,
+  quoteTableIdentifier,
+  quoteColumnIdentifier,
   toSqlLiteral,
   toSqlInputLiteral,
 } from './scripts/sql-utils.js'
 import { escapeHtml } from './scripts/text-utils.js'
-
 
 /* ══════════════════════════════════════════
    1. ELEMENT REFS
@@ -44,10 +23,7 @@ const modalCancel    = document.getElementById('modalCancel')
 const modalConnect   = document.getElementById('modalConnect')
 const modalError     = document.getElementById('modalError')
 const hostFields     = document.getElementById('hostFields')
-const fileGroup      = document.getElementById('fileGroup')
-const filePathInput  = document.getElementById('filePathInput')
-const driverTabs     = document.querySelectorAll('.driver-tab')
-// Individual connection fields
+
 const fieldHost      = document.getElementById('fieldHost')
 const fieldPort      = document.getElementById('fieldPort')
 const fieldDatabase  = document.getElementById('fieldDatabase')
@@ -58,56 +34,23 @@ const connPreview    = document.getElementById('connPreview')
 const pasteConnBtn   = document.getElementById('pasteConnBtn')
 const rawConnGroup   = document.getElementById('rawConnGroup')
 const rawConnInput   = document.getElementById('rawConnInput')
+
 const schemaList     = document.getElementById('schemaList')
-const historyList    = document.getElementById('historyList')
-const filterBar      = document.getElementById('filterBar')
-const filterToggleBtn = document.getElementById('filterToggleBtn')
-const tableEditorBtn = document.getElementById('tableEditorBtn')
-const filterRows     = document.getElementById('filterRows')
-const addFilterBtn   = document.getElementById('addFilterBtn')
-const clearFiltersBtn= document.getElementById('clearFiltersBtn')
-const applyFiltersBtn= document.getElementById('applyFiltersBtn')
 const queryInput     = document.getElementById('queryInput')
 const runBtn         = document.getElementById('runBtn')
+
 const emptyState       = document.getElementById('emptyState')
 const schemaOverview   = document.getElementById('schemaOverview')
 const schemaOverviewTitle = document.getElementById('schemaOverviewTitle')
 const schemaGrid       = document.getElementById('schemaGrid')
+
+const comparisonArea = document.getElementById('comparisonArea')
+const comparisonGrid = document.querySelector('.comparison-grid')
+
 const sqlPanel       = document.getElementById('sqlPanel')
 const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
-const tableEditorScreen = document.getElementById('tableEditorScreen')
-const editorCategoryTableBtn = document.getElementById('editorCategoryTableBtn')
-const editorCategoryDatabaseBtn = document.getElementById('editorCategoryDatabaseBtn')
-const tableEditSection = document.getElementById('tableEditSection')
-const databaseEditSection = document.getElementById('databaseEditSection')
-const tableEditTableSelect = document.getElementById('tableEditTableSelect')
-const tableEditAddColumnNameInput = document.getElementById('tableEditAddColumnNameInput')
-const tableEditAddColumnTypeInput = document.getElementById('tableEditAddColumnTypeInput')
-const tableEditAddColumnPreviewBtn = document.getElementById('tableEditAddColumnPreviewBtn')
-const tableEditDropColumnSelect = document.getElementById('tableEditDropColumnSelect')
-const tableEditDropColumnPreviewBtn = document.getElementById('tableEditDropColumnPreviewBtn')
-const dbCreateTableNameInput = document.getElementById('dbCreateTableNameInput')
-const dbCreateColumnCountInput = document.getElementById('dbCreateColumnCountInput')
-const dbGenerateColumnsBtn = document.getElementById('dbGenerateColumnsBtn')
-const dbCreateColumnsContainer = document.getElementById('dbCreateColumnsContainer')
-const dbCreateTablePreviewBtn = document.getElementById('dbCreateTablePreviewBtn')
-const dbDropTableSelect = document.getElementById('dbDropTableSelect')
-const dbDropTablePreviewBtn = document.getElementById('dbDropTablePreviewBtn')
-const editorLoadTableBtn = document.getElementById('editorLoadTableBtn')
-const editorSqlInput = document.getElementById('editorSqlInput')
-const editorRunSqlBtn = document.getElementById('editorRunSqlBtn')
-const editorCommitPanel = document.getElementById('editorCommitPanel')
-const editorCommitSummary = document.getElementById('editorCommitSummary')
-const editorCommitSql = document.getElementById('editorCommitSql')
-const editorUndoBtn = document.getElementById('editorUndoBtn')
-const editorCommitBtn = document.getElementById('editorCommitBtn')
-const editorResultsPanel = document.getElementById('editorResultsPanel')
-const editorResultsHead = document.getElementById('editorResultsHead')
-const editorResultsBody = document.getElementById('editorResultsBody')
-const editorResultsFooter = document.getElementById('editorResultsFooter')
-const comparisonArea = document.getElementById('comparisonArea')
-const comparisonGrid = document.querySelector('.comparison-grid')
+
 const resultsPanel   = document.getElementById('resultsPanel')
 const resultsHead    = document.getElementById('resultsHead')
 const resultsBody    = document.getElementById('resultsBody')
@@ -116,6 +59,7 @@ const addEntryBtn    = document.getElementById('addEntryBtn')
 const removeEntryBtn = document.getElementById('removeEntryBtn')
 const saveEntryBtn   = document.getElementById('saveEntryBtn')
 const cancelEntryBtn = document.getElementById('cancelEntryBtn')
+
 const previewPanel   = document.getElementById('previewPanel')
 const previewSummary = document.getElementById('previewSummary')
 const previewHead    = document.getElementById('previewHead')
@@ -123,6 +67,7 @@ const previewBody    = document.getElementById('previewBody')
 const previewFooter  = document.getElementById('previewFooter')
 const confirmPreviewBtn = document.getElementById('confirmPreviewBtn')
 const undoPreviewBtn = document.getElementById('undoPreviewBtn')
+
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
 const errorReturnBtn = document.getElementById('errorReturnBtn')
@@ -136,205 +81,24 @@ const statusDriver   = document.getElementById('statusDriver')
 ══════════════════════════════════════════ */
 const state = {
   connected: false,
-  driver: 'postgres',
-  viewMode: 'query',
   dbName: '',
   tables: [],
-  columns: {},          // { tableName: [ column, ... ] }
+  columns: {},
   activeTable: null,
-  queryHistory: [],
-  filters: [],          // [ { column, operator, value, enabled } ]
-  pendingPreview: null, // { sql, targetTable }
-  pendingPreviewSource: null, // 'main' | 'editor'
+  pendingPreview: null,
   resultFields: [],
   resultRows: [],
   selectedRowIndices: [],
   resultRightLabel: '',
   entryDraftActive: false,
   entryDraftValues: {},
-  cellEditDraft: null,  // { rowIndex, field, value, originalValue }
-}
-
-tableEditorBtn.disabled = true
-setEditorCategory('table')
-
-function enterTableEditor() {
-  if (state.pendingPreviewSource === 'main') {
-    setStatus('Finish the pending query preview before opening table editor.')
-    return
-  }
-
-  state.viewMode = 'editor'
-  setEditorCategory('table')
-  if (state.activeTable && state.tables.includes(state.activeTable)) {
-    tableEditTableSelect.value = state.activeTable
-  } else if (!tableEditTableSelect.value && state.tables.length > 0) {
-    tableEditTableSelect.value = state.tables[0]
-  }
-  syncDropColumnOptions()
-  tableEditorBtn.classList.add('active')
-  filterBar.classList.add('hidden')
-  filterToggleBtn.classList.remove('active')
-  tableEditorScreen.classList.remove('hidden')
-  emptyState.classList.add('hidden')
-  schemaOverview.classList.add('hidden')
-  comparisonArea.classList.add('hidden')
-  setStatus('Table editor opened')
-}
-
-function leaveTableEditor() {
-  if (state.pendingPreviewSource === 'editor') {
-    setStatus('Confirm Commit or Undo the staged editor change before leaving.')
-    return
-  }
-
-  state.viewMode = 'query'
-  tableEditorBtn.classList.remove('active')
-  tableEditorScreen.classList.add('hidden')
-
-  if (!state.connected) {
-    showPanels('empty')
-    return
-  }
-
-  if (state.pendingPreviewSource === 'main') {
-    showPanels('preview')
-    return
-  }
-
-  if (resultsPanel.classList.contains('hidden')) {
-    showPanels('schema')
-  } else {
-    showPanels('results')
-  }
-}
-
-function setEditorCategory(category) {
-  const tableMode = category === 'table'
-  editorCategoryTableBtn.classList.toggle('active', tableMode)
-  editorCategoryDatabaseBtn.classList.toggle('active', !tableMode)
-  tableEditSection.classList.toggle('hidden', !tableMode)
-  databaseEditSection.classList.toggle('hidden', tableMode)
-}
-
-function populateEditorTableSelectors() {
-  const options = state.tables.length
-    ? state.tables.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')
-    : '<option value="">No tables</option>'
-
-  tableEditTableSelect.innerHTML = options
-  dbDropTableSelect.innerHTML = options
-
-  if (state.activeTable && state.tables.includes(state.activeTable)) {
-    tableEditTableSelect.value = state.activeTable
-  }
-
-  syncDropColumnOptions()
-}
-
-function syncDropColumnOptions() {
-  const table = tableEditTableSelect.value
-  const cols = state.columns[table] || []
-  tableEditDropColumnSelect.innerHTML = cols.length
-    ? cols.map(col => `<option value="${escapeHtml(col.column_name)}">${escapeHtml(col.column_name)}</option>`).join('')
-    : '<option value="">No columns</option>'
-}
-
-const DB_COLUMN_TYPES = [
-  'INTEGER',
-  'TEXT',
-  'VARCHAR(255)',
-  'BOOLEAN',
-  'DATE',
-  'TIMESTAMP',
-  'DECIMAL(10,2)',
-]
-
-function renderDbCreateColumnInputs(rawCount = 3) {
-  const parsed = Number.parseInt(String(rawCount), 10)
-  const safeCount = Number.isFinite(parsed) ? Math.min(30, Math.max(1, parsed)) : 3
-  dbCreateColumnCountInput.value = String(safeCount)
-
-  const typeOptions = DB_COLUMN_TYPES
-    .map(type => `<option value="${type}">${type}</option>`)
-    .join('')
-
-  dbCreateColumnsContainer.innerHTML = Array.from({ length: safeCount }, (_, i) => `
-    <div class="db-create-col-row" data-index="${i}">
-      <input class="field-input mono db-col-name-input" type="text" placeholder="column_${i + 1}" value="column_${i + 1}" />
-      <select class="filter-select editor-select db-col-type-select">${typeOptions}</select>
-      <button class="db-col-pk-btn" type="button">PK</button>
-    </div>
-  `).join('')
-
-  const pkButtons = Array.from(dbCreateColumnsContainer.querySelectorAll('.db-col-pk-btn'))
-  pkButtons.forEach((btn, index) => {
-    btn.classList.toggle('active', index === 0)
-    btn.addEventListener('click', () => {
-      pkButtons.forEach(other => other.classList.remove('active'))
-      btn.classList.add('active')
-    })
-  })
-}
-
-function buildCreateTableSqlFromGui() {
-  const tableName = dbCreateTableNameInput.value.trim()
-  if (!tableName) return { ok: false, error: 'Enter a table name for Create Table.' }
-
-  const rows = Array.from(dbCreateColumnsContainer.querySelectorAll('.db-create-col-row'))
-  if (!rows.length) return { ok: false, error: 'Generate at least one column first.' }
-
-  const pkIndex = rows.findIndex(row => row.querySelector('.db-col-pk-btn')?.classList.contains('active'))
-
-  const definitions = []
-  for (let i = 0; i < rows.length; i += 1) {
-    const row = rows[i]
-    const name = row.querySelector('.db-col-name-input')?.value.trim() || ''
-    const dataType = row.querySelector('.db-col-type-select')?.value.trim() || ''
-
-    if (!name) return { ok: false, error: `Column ${i + 1} needs a name.` }
-    if (!dataType) return { ok: false, error: `Column ${i + 1} needs a datatype.` }
-
-    const pkPart = i === pkIndex ? ' PRIMARY KEY' : ''
-    definitions.push(`${quoteColumnIdentifier(name)} ${dataType}${pkPart}`)
-  }
-
-  const sql = `CREATE TABLE ${quoteTableIdentifier(tableName)} (${definitions.join(', ')});`
-  return { ok: true, sql }
-}
-
-renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
-
-function renderEditorResults(fields, rows, label = '') {
-  editorResultsPanel.classList.remove('hidden')
-  editorResultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
-  editorResultsBody.innerHTML = rows.map(row =>
-    '<tr>' + fields.map(f => {
-      const val = row[f]
-      return `<td>${val === null || val === undefined ? '<span class="null-value">NULL</span>' : escapeHtml(String(val))}</td>`
-    }).join('') + '</tr>'
-  ).join('')
-
-  if (!rows.length) {
-    const colSpan = Math.max(fields.length, 1)
-    editorResultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
-  }
-
-  editorResultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${label}</span>`
+  cellEditDraft: null,
 }
 
 /* ══════════════════════════════════════════
    3. CONNECTION MODAL
 ══════════════════════════════════════════ */
 
-// Default values per driver
-const DRIVER_DEFAULTS = {
-  postgres: { host: 'localhost', port: '5432', user: 'postgres' },
-  mysql:    { host: 'localhost', port: '3306', user: 'root'     },
-  sqlite:   {}
-}
-
-// Open modal — reset fields to defaults for the current driver
 let disconnectTimer = null
 
 connectBtn.addEventListener('click', () => {
@@ -344,18 +108,15 @@ connectBtn.addEventListener('click', () => {
   }
 
   if (connectBtn.dataset.confirming === 'true') {
-    // Second click — confirmed, actually disconnect
     clearTimeout(disconnectTimer)
     connectBtn.dataset.confirming = 'false'
     handleDisconnect()
   } else {
-    // First click — enter confirm state
     connectBtn.dataset.confirming = 'true'
     connectBtn.textContent = 'Confirm?'
     connectBtn.classList.remove('btn-disconnect')
     connectBtn.classList.add('btn-confirm')
 
-    // Reset back to Disconnect after 5 seconds if not confirmed
     disconnectTimer = setTimeout(() => {
       if (connectBtn.dataset.confirming === 'true') {
         connectBtn.dataset.confirming = 'false'
@@ -390,58 +151,23 @@ modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) c
 function openModal() {
   modalOverlay.classList.remove('hidden')
   hideModalError()
-  applyDriverDefaults(state.driver)
   updatePreview()
   fieldHost.focus()
 }
 
 function closeModal() {
   modalOverlay.classList.add('hidden')
-  // Reset paste mode on close
   pasteMode = false
   pasteConnBtn.classList.remove('active')
   rawConnGroup.classList.add('hidden')
   rawConnInput.value = ''
 }
 
-// Fill placeholder text with the defaults for the selected driver.
-// We use placeholders rather than pre-filling the value so the field
-// reads as empty — the default only applies if the user leaves it blank.
-function applyDriverDefaults(driver) {
-  const d = DRIVER_DEFAULTS[driver] || {}
-  fieldHost.placeholder     = d.host || 'localhost'
-  fieldPort.placeholder     = d.port || ''
-  fieldUser.placeholder     = d.user || ''
-  fieldDatabase.placeholder = 'my_database'
-  fieldPassword.placeholder = '••••••••'
-}
-
-// Driver tab switching
-driverTabs.forEach(tab => {
-  tab.addEventListener('click', () => {
-    driverTabs.forEach(t => t.classList.remove('active'))
-    tab.classList.add('active')
-    state.driver = tab.dataset.driver
-
-    if (state.driver === 'sqlite') {
-      hostFields.classList.add('hidden')
-      fileGroup.classList.remove('hidden')
-    } else {
-      hostFields.classList.remove('hidden')
-      fileGroup.classList.add('hidden')
-      applyDriverDefaults(state.driver)
-      updatePreview()
-    }
-  })
-})
-
-// Live preview — rebuild the connection string as the user types
 ;[fieldHost, fieldPort, fieldDatabase, fieldUser, fieldPassword].forEach(el => {
-  el.addEventListener('input',  updatePreview)
+  el.addEventListener('input', updatePreview)
   el.addEventListener('change', updatePreview)
 })
 
-// SSL toggle button — flip data-active and update preview
 fieldSSL.addEventListener('click', () => {
   const active = fieldSSL.dataset.active === 'true'
   fieldSSL.dataset.active = String(!active)
@@ -449,7 +175,6 @@ fieldSSL.addEventListener('click', () => {
   updatePreview()
 })
 
-// Paste mode — toggle the raw connection string input
 let pasteMode = false
 pasteConnBtn.addEventListener('click', () => {
   pasteMode = !pasteMode
@@ -462,7 +187,6 @@ pasteConnBtn.addEventListener('click', () => {
   }
 })
 
-// Keep preview in sync when typing into the raw input
 rawConnInput.addEventListener('input', () => {
   connPreview.textContent = rawConnInput.value || buildConnectionString()
 })
@@ -471,22 +195,15 @@ function updatePreview() {
   connPreview.textContent = buildConnectionString()
 }
 
-// Build the connection string from the current field values,
-// falling back to placeholder defaults for any field left empty.
 function buildConnectionString() {
-  const driver = state.driver
-  const d      = DRIVER_DEFAULTS[driver] || {}
-
-  const host = fieldHost.value.trim()     || d.host || 'localhost'
-  const port = fieldPort.value.trim()     || d.port || ''
-  const db   = fieldDatabase.value.trim() || ''
-  const user = fieldUser.value.trim()     || d.user || ''
+  const host = fieldHost.value.trim() || 'localhost'
+  const port = fieldPort.value.trim() || '5432'
+  const db   = fieldDatabase.value.trim() || 'postgres'
+  const user = fieldUser.value.trim() || 'postgres'
   const pass = fieldPassword.value.trim() || ''
   const ssl  = fieldSSL.dataset.active === 'true'
 
-  const scheme = driver === 'mysql' ? 'mysql' : 'postgres'
-
-  let str = `${scheme}://`
+  let str = `postgres://`
   if (user)       str += user
   if (pass)       str += `:${pass}`
   if (user || pass) str += '@'
@@ -498,34 +215,19 @@ function buildConnectionString() {
   return str
 }
 
-// Connect button
 modalConnect.addEventListener('click', handleConnect)
 fieldPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnect() })
 
 async function handleConnect() {
-  // For SQLite, use the file path directly
-  // For everything else, build the connection string from the fields
-  const connString = state.driver === 'sqlite'
-    ? filePathInput.value.trim()
-    : (pasteMode && rawConnInput.value.trim())
-      ? rawConnInput.value.trim()
-      : buildConnectionString()
-
-  if (state.driver === 'sqlite' && !connString) {
-    showModalError('Please enter a file path.')
-    return
-  }
-
-  if (state.driver !== 'sqlite' && !fieldDatabase.value.trim()) {
-    showModalError('Please enter a database name.')
-    return
-  }
+  const connString = (pasteMode && rawConnInput.value.trim())
+    ? rawConnInput.value.trim()
+    : buildConnectionString()
 
   modalConnect.disabled = true
   modalConnect.textContent = 'Connecting…'
   hideModalError()
 
-  const result = await window.db.connect(state.driver, connString)
+  const result = await window.db.connect(connString)
 
   modalConnect.disabled = false
   modalConnect.textContent = 'Connect →'
@@ -535,7 +237,7 @@ async function handleConnect() {
     return
   }
 
-  state.dbName    = fieldDatabase.value.trim() || filePathInput.value.split('\\').pop().split('/').pop()
+  state.dbName = fieldDatabase.value.trim() || 'postgres'
   state.connected = true
 
   closeModal()
@@ -549,10 +251,7 @@ async function handleDisconnect() {
   state.tables = []
   state.columns = {}
   state.activeTable = null
-  state.filters = []
-  state.queryHistory = []
   state.pendingPreview = null
-  state.pendingPreviewSource = null
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
@@ -562,39 +261,8 @@ async function handleDisconnect() {
   state.cellEditDraft = null
 
   setConnected(false)
-
-  // Clear sidebar
   schemaList.innerHTML = '<div class="sidebar-empty">No connection</div>'
-  if (historyList) {
-    historyList.innerHTML = '<div class="sidebar-empty">No queries yet</div>'
-  }
 
-  // Clear filter bar
-  filterBar.classList.add('hidden')
-  filterRows.innerHTML = ''
-  filterToggleBtn.classList.remove('active')
-  tableEditorBtn.classList.remove('active')
-  tableEditorScreen.classList.add('hidden')
-  editorCommitPanel.classList.add('hidden')
-  editorCommitSummary.textContent = 'No staged edit yet.'
-  editorCommitSql.textContent = ''
-  editorResultsPanel.classList.add('hidden')
-  editorResultsHead.innerHTML = ''
-  editorResultsBody.innerHTML = ''
-  editorResultsFooter.innerHTML = ''
-  tableEditTableSelect.innerHTML = '<option value="">No tables</option>'
-  tableEditDropColumnSelect.innerHTML = '<option value="">No columns</option>'
-  dbDropTableSelect.innerHTML = '<option value="">No tables</option>'
-  dbCreateTableNameInput.value = ''
-  dbCreateColumnCountInput.value = '3'
-  dbCreateColumnsContainer.innerHTML = ''
-  tableEditAddColumnNameInput.value = ''
-  tableEditAddColumnTypeInput.value = ''
-  setEditorCategory('table')
-  renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
-  state.viewMode = 'query'
-
-  // Reset output area back to empty state
   sqlPanel.classList.add('hidden')
   comparisonArea.classList.add('hidden')
   previewPanel.classList.add('hidden')
@@ -627,8 +295,7 @@ function setConnected(yes) {
   connectBtn.classList.toggle('btn-disconnect', yes)
   connectBtn.classList.toggle('btn-connect', !yes)
   refreshBtn.disabled = !yes
-  tableEditorBtn.disabled = !yes
-  statusDriver.textContent = yes ? state.driver : ''
+  statusDriver.textContent = yes ? 'PostgreSQL' : ''
   setStatus(yes ? `Connected to ${state.dbName}` : 'Ready')
 }
 
@@ -642,16 +309,6 @@ function hideModalError() {
   modalError.textContent = ''
 }
 
-function extractDbName(connStr, driver) {
-  try {
-    if (driver === 'sqlite') return connStr.split('/').pop()
-    const url = new URL(connStr)
-    return url.pathname.replace('/', '') || url.hostname
-  } catch {
-    return connStr.split('/').pop() || 'database'
-  }
-}
-
 
 /* ══════════════════════════════════════════
    4. SCHEMA SIDEBAR
@@ -662,7 +319,7 @@ async function loadSchema() {
   const result = await window.db.tables()
 
   if (!result.ok) {
-    schemaList.innerHTML = `<div class="sidebar-empty">${result.error}</div>`
+    schemaList.innerHTML = `<div class="sidebar-empty">${escapeHtml(result.error)}</div>`
     return
   }
 
@@ -679,9 +336,7 @@ async function loadSchema() {
     state.activeTable = null
   }
   syncActiveSchemaTable()
-
   renderSchemaOverview(result.tables)
-  populateEditorTableSelectors()
   setStatus(`${result.tables.length} tables loaded`)
 }
 
@@ -698,16 +353,16 @@ function renderSchemaOverview(tables) {
     card.className = 'schema-card'
     card.innerHTML = `
       <div class="schema-card-head">
-        <span class="schema-card-name">${table}</span>
+        <span class="schema-card-name">${escapeHtml(table)}</span>
         <span class="schema-card-count">${cols.length} col${cols.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="schema-card-cols">
         ${preview.map(col => `
           <div class="schema-card-col">
-            <span class="schema-card-col-name">${col.column_name}</span>
+            <span class="schema-card-col-name">${escapeHtml(col.column_name)}</span>
             ${col.is_pk
               ? '<span class="schema-card-col-pk">PK</span>'
-              : `<span class="schema-card-col-type">${col.data_type}</span>`}
+              : `<span class="schema-card-col-type">${escapeHtml(col.data_type)}</span>`}
           </div>
         `).join('')}
         ${extra > 0 ? `<div class="schema-card-more">+${extra} more column${extra !== 1 ? 's' : ''}</div>` : ''}
@@ -718,7 +373,6 @@ function renderSchemaOverview(tables) {
     schemaGrid.appendChild(card)
   }
 
-  // Show overview, hide empty state
   emptyState.classList.add('hidden')
   schemaOverview.classList.remove('hidden')
 }
@@ -732,7 +386,7 @@ function buildTableNode(tableName, columns) {
   header.className = 'schema-table-header'
   header.innerHTML = `
     <span class="tbl-icon">▤</span>
-    <span>${tableName}</span>
+    <span>${escapeHtml(tableName)}</span>
     <button class="tbl-toggle-btn" type="button" aria-label="Collapse columns" aria-expanded="true" title="Collapse">−</button>
   `
 
@@ -740,15 +394,13 @@ function buildTableNode(tableName, columns) {
   colsDiv.className = 'schema-cols'
   colsDiv.innerHTML = columns.map(col => `
     <div class="col-row">
-      <span class="col-name">${col.column_name}</span>
+      <span class="col-name">${escapeHtml(col.column_name)}</span>
       ${col.is_pk
         ? '<span class="col-pk">PK</span>'
-        : `<span class="col-type">${col.data_type}</span>`}
+        : `<span class="col-type">${escapeHtml(col.data_type)}</span>`}
     </div>
   `).join('')
 
-  // Single click on row header selects table.
-  // Collapse/expand is only controlled by the corner toggle button.
   const toggleBtn = header.querySelector('.tbl-toggle-btn')
   let expanded = true
   const setExpanded = (isExpanded) => {
@@ -784,211 +436,19 @@ function syncActiveSchemaTable() {
 }
 
 function selectTable(tableName) {
-  if (state.viewMode === 'editor') {
-    leaveTableEditor()
-    if (state.viewMode === 'editor') return
-  }
-
   state.activeTable = tableName
   syncActiveSchemaTable()
   state.selectedRowIndices = []
   refreshEntryButtons()
-  const sql = `SELECT * FROM ${tableName} LIMIT 100;`
+  const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)} LIMIT 100;`
   queryInput.value = sql
   runQuery(sql)
 }
 
-
 /* ══════════════════════════════════════════
-   5. FILTER BAR
+   5. QUERY RUNNER
 ══════════════════════════════════════════ */
 
-function showFilterBar(tableName) {
-  filterBar.classList.remove('hidden')
-  filterToggleBtn.classList.add('active')
-  filterRows.innerHTML = ''
-  state.filters = []
-  addFilter(tableName)
-}
-
-function setFilterCheckVisual(checkEl, enabled) {
-  if (!checkEl) return
-  checkEl.classList.toggle('unchecked', !enabled)
-  checkEl.setAttribute('aria-checked', enabled ? 'true' : 'false')
-  checkEl.style.opacity = ''
-}
-
-function renumberFilterPills() {
-  const pills = filterRows.querySelectorAll('.filter-pill')
-  pills.forEach((pill, index) => {
-    pill.dataset.index = String(index)
-  })
-}
-
-function syncFilterCheckUi() {
-  const pills = filterRows.querySelectorAll('.filter-pill')
-  pills.forEach((pill, index) => {
-    const checkEl = pill.querySelector('.filter-check')
-    const enabled = Boolean(state.filters[index]?.enabled)
-    setFilterCheckVisual(checkEl, enabled)
-  })
-}
-
-function updateApplyAllButtonLabel() {
-  const hasFilters = state.filters.length > 0
-  const allEnabled = hasFilters && state.filters.every(f => f.enabled)
-  applyFiltersBtn.textContent = allEnabled ? 'Unapply All' : 'Apply All'
-}
-
-function addFilter(tableName) {
-  const columns = state.columns[tableName] || []
-  const filterIndex = state.filters.length
-
-  const filter = { column: columns[0]?.column_name || '', operator: '=', value: '', enabled: true }
-  state.filters.push(filter)
-
-  const pill = document.createElement('div')
-  pill.className = 'filter-pill'
-  pill.dataset.index = filterIndex
-
-  pill.innerHTML = `
-    <div class="filter-check" title="Toggle filter">✓</div>
-    <select class="filter-select col-select">
-      ${columns.map(c => `<option value="${c.column_name}">${c.column_name}</option>`).join('')}
-    </select>
-    <select class="filter-select op-select">
-      <option value="=">=</option>
-      <option value="!=">!=</option>
-      <option value=">">&gt;</option>
-      <option value=">=">&gt;=</option>
-      <option value="<">&lt;</option>
-      <option value="<=">&lt;=</option>
-      <option value="LIKE">LIKE</option>
-      <option value="NOT LIKE">NOT LIKE</option>
-    </select>
-    <input class="filter-value val-input" type="text" placeholder="value" />
-    <button class="filter-apply-btn">Apply</button>
-    <button class="filter-icon-btn remove-btn" title="Remove">−</button>
-    <button class="filter-icon-btn add-btn" title="Add filter">+</button>
-  `
-
-  // Wire up changes to state
-  pill.querySelector('.col-select').addEventListener('change', (e) => {
-    const index = Number(pill.dataset.index)
-    if (!Number.isInteger(index) || !state.filters[index]) return
-    state.filters[index].column = e.target.value
-  })
-  pill.querySelector('.op-select').addEventListener('change', (e) => {
-    const index = Number(pill.dataset.index)
-    if (!Number.isInteger(index) || !state.filters[index]) return
-    state.filters[index].operator = e.target.value
-  })
-  pill.querySelector('.val-input').addEventListener('input', (e) => {
-    const index = Number(pill.dataset.index)
-    if (!Number.isInteger(index) || !state.filters[index]) return
-    state.filters[index].value = e.target.value
-  })
-
-  pill.querySelector('.filter-check').addEventListener('click', (e) => {
-    const index = Number(pill.dataset.index)
-    if (!Number.isInteger(index) || !state.filters[index]) return
-    state.filters[index].enabled = !state.filters[index].enabled
-    setFilterCheckVisual(e.currentTarget, state.filters[index].enabled)
-    updateApplyAllButtonLabel()
-  })
-
-  pill.querySelector('.filter-apply-btn').addEventListener('click', () => {
-    applyFilters()
-  })
-
-  pill.querySelector('.remove-btn').addEventListener('click', () => {
-    const index = Number(pill.dataset.index)
-    if (!Number.isInteger(index)) return
-    pill.remove()
-    state.filters.splice(index, 1)
-    renumberFilterPills()
-    updateApplyAllButtonLabel()
-  })
-
-  pill.querySelector('.add-btn').addEventListener('click', () => {
-    addFilter(tableName)
-  })
-
-  filterRows.appendChild(pill)
-  renumberFilterPills()
-  syncFilterCheckUi()
-  updateApplyAllButtonLabel()
-}
-
-// Filter toggle button — show/hide the filter bar
-filterToggleBtn.addEventListener('click', () => {
-  const isVisible = !filterBar.classList.contains('hidden')
-  if (isVisible) {
-    filterBar.classList.add('hidden')
-    filterToggleBtn.classList.remove('active')
-  } else {
-    if (state.activeTable) {
-      showFilterBar(state.activeTable)
-    } else {
-      filterBar.classList.remove('hidden')
-    }
-    filterToggleBtn.classList.add('active')
-  }
-})
-
-addFilterBtn.addEventListener('click', () => {
-  if (state.activeTable) addFilter(state.activeTable)
-})
-
-clearFiltersBtn.addEventListener('click', () => {
-  filterRows.innerHTML = ''
-  state.filters = []
-  updateApplyAllButtonLabel()
-  filterBar.classList.add('hidden')
-  filterToggleBtn.classList.remove('active')
-  if (state.activeTable) selectTable(state.activeTable)
-})
-
-applyFiltersBtn.addEventListener('click', () => {
-  if (!state.activeTable) return
-  if (state.filters.length > 0) {
-    const allEnabled = state.filters.every(f => f.enabled)
-    state.filters.forEach(filter => {
-      filter.enabled = !allEnabled
-    })
-    syncFilterCheckUi()
-    updateApplyAllButtonLabel()
-  }
-  applyFilters()
-})
-
-function applyFilters() {
-  if (!state.activeTable) return
-
-  const active = state.filters.filter(f => f.enabled && f.value.trim())
-  if (active.length === 0) {
-    selectTable(state.activeTable)
-    return
-  }
-
-  const where = active
-    .map(f => {
-      const val = isNaN(f.value) ? `'${f.value}'` : f.value
-      return `${f.column} ${f.operator} ${val}`
-    })
-    .join(' AND ')
-
-  const sql = `SELECT * FROM ${state.activeTable} WHERE ${where} LIMIT 100;`
-  queryInput.value = sql
-  runQuery(sql)
-}
-
-
-/* ══════════════════════════════════════════
-   6. QUERY RUNNER
-══════════════════════════════════════════ */
-
-// Auto-resize textarea as content grows
 queryInput.addEventListener('input', () => {
   queryInput.style.height = 'auto'
   queryInput.style.height = queryInput.scrollHeight + 'px'
@@ -998,88 +458,6 @@ runBtn.addEventListener('click', () => {
   const sql = queryInput.value.trim()
   if (sql) runQuery(sql)
 })
-
-tableEditorBtn.addEventListener('click', () => {
-  if (!state.connected) return
-  if (state.viewMode === 'editor') {
-    leaveTableEditor()
-  } else {
-    enterTableEditor()
-  }
-})
-
-editorCategoryTableBtn.addEventListener('click', () => {
-  setEditorCategory('table')
-})
-
-editorCategoryDatabaseBtn.addEventListener('click', () => {
-  setEditorCategory('database')
-})
-
-tableEditTableSelect.addEventListener('change', syncDropColumnOptions)
-
-tableEditAddColumnPreviewBtn.addEventListener('click', async () => {
-  const table = tableEditTableSelect.value
-  const col = tableEditAddColumnNameInput.value.trim()
-  const colType = tableEditAddColumnTypeInput.value.trim()
-  if (!table || !col || !colType) return
-  const sql = `ALTER TABLE ${quoteTableIdentifier(table)} ADD COLUMN ${quoteColumnIdentifier(col)} ${colType};`
-  editorSqlInput.value = sql
-  await runQuery(sql, 'editor')
-})
-
-tableEditDropColumnPreviewBtn.addEventListener('click', async () => {
-  const table = tableEditTableSelect.value
-  const col = tableEditDropColumnSelect.value
-  if (!table || !col) return
-  const sql = `ALTER TABLE ${quoteTableIdentifier(table)} DROP COLUMN ${quoteColumnIdentifier(col)};`
-  editorSqlInput.value = sql
-  await runQuery(sql, 'editor')
-})
-
-dbGenerateColumnsBtn.addEventListener('click', () => {
-  renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
-})
-
-dbCreateColumnCountInput.addEventListener('change', () => {
-  renderDbCreateColumnInputs(dbCreateColumnCountInput.value)
-})
-
-dbCreateTablePreviewBtn.addEventListener('click', async () => {
-  const built = buildCreateTableSqlFromGui()
-  if (!built.ok) {
-    editorCommitSummary.textContent = built.error
-    return
-  }
-
-  editorSqlInput.value = built.sql
-  await runQuery(built.sql, 'editor')
-})
-
-dbDropTablePreviewBtn.addEventListener('click', async () => {
-  const table = dbDropTableSelect.value
-  if (!table) return
-  const sql = `DROP TABLE ${quoteTableIdentifier(table)};`
-  editorSqlInput.value = sql
-  await runQuery(sql, 'editor')
-})
-
-editorLoadTableBtn.addEventListener('click', async () => {
-  const table = tableEditTableSelect.value
-  if (!table) return
-  const sql = `SELECT * FROM ${quoteTableIdentifier(table)} LIMIT 100;`
-  editorSqlInput.value = sql
-  await runQuery(sql, 'editor')
-})
-
-editorRunSqlBtn.addEventListener('click', async () => {
-  const sql = editorSqlInput.value.trim()
-  if (!sql) return
-  await runQuery(sql, 'editor')
-})
-
-editorCommitBtn.addEventListener('click', () => commitPreview())
-editorUndoBtn.addEventListener('click', () => undoPreview())
 
 queryInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -1129,82 +507,52 @@ function returnToSchemaOverview() {
   setStatus('Showing schema overview')
 }
 
-async function runQuery(sql, source = 'main') {
+async function runQuery(sql) {
   if (isMutatingSql(sql)) {
-    await runMutationPreview(sql, source)
+    await runMutationPreview(sql)
     return
   }
 
   if (state.pendingPreview) {
-    if (source === 'editor') {
-      editorCommitSummary.textContent = 'A preview is already pending. Confirm Commit or Undo first.'
-    } else {
-      showPanels('error')
-      errorBody.textContent = 'A pending preview is open. Confirm Commit or Undo before running another query.'
-    }
+    showPanels('error')
+    errorBody.textContent = 'A pending preview is open. Confirm Commit or Undo before running another query.'
     setStatus('Pending preview needs confirmation')
     return
   }
 
   setStatus('Running query…')
-  if (source === 'main') showPanels('loading')
+  showPanels('loading')
   const start = Date.now()
 
   const result = await window.db.query(sql)
   const ms = Date.now() - start
 
   if (!result.ok) {
-    if (source === 'editor') {
-      editorCommitSummary.textContent = result.error
-    } else {
-      if (result.blocked) {
-        showPanels('error')
-        errorBody.textContent = result.error
-        setStatus('Query blocked')
-      } else {
-        showPanels('error')
-        errorBody.textContent = result.error
-        setStatus('Query failed')
-      }
-    }
+    showPanels('error')
+    errorBody.textContent = result.error
+    setStatus('Query failed')
     return
   }
 
-  if (source === 'editor') {
-    renderEditorResults(result.fields, result.rows, `${ms}ms`)
-    editorCommitSummary.textContent = 'Read query completed in editor.'
-    setStatus(`${result.rows.length} rows · ${ms}ms`)
-    return
-  }
-
-  // Show SQL panel
   sqlBody.textContent = sql
   sqlBadge.textContent = '✓ safe'
   sqlBadge.className = 'badge badge-safe'
 
-  // Render results
   renderResults(result.fields, result.rows, ms)
   showPanels('results')
-  addHistory(sql)
   setStatus(`${result.rows.length} rows · ${ms}ms`)
 }
 
-async function runMutationPreview(sql, source = 'main') {
+async function runMutationPreview(sql) {
   setStatus('Building preview…')
-  if (source === 'main') showPanels('loading')
+  showPanels('loading')
 
   const tableHint = extractTargetTable(sql) || state.activeTable
   const result = await window.db.previewChange(sql, tableHint)
 
   if (!result.ok) {
-    if (source === 'editor') {
-      editorCommitSummary.textContent = result.error
-      editorCommitSql.textContent = sql
-      editorCommitPanel.classList.remove('hidden')
-    } else {
-      showPanels('error')
-      errorBody.textContent = result.error
-    }
+    showPanels('error')
+    errorBody.textContent = result.error
     setStatus('Preview failed')
     return
   }
@@ -1213,7 +561,6 @@ async function runMutationPreview(sql, source = 'main') {
     sql,
     targetTable: result.targetTable || tableHint || null,
   }
-  state.pendingPreviewSource = source
   state.selectedRowIndices = []
   state.entryDraftActive = false
   state.entryDraftValues = {}
@@ -1224,52 +571,28 @@ async function runMutationPreview(sql, source = 'main') {
   sqlBadge.textContent = 'pending commit'
   sqlBadge.className = 'badge badge-pending'
 
-  if (source === 'editor') {
-    editorCommitPanel.classList.remove('hidden')
-    editorCommitSql.textContent = sql
-    editorCommitSummary.textContent = result.targetTable
-      ? `Previewing staged edit on ${result.targetTable}.`
-      : 'Previewing staged schema/data edit.'
-    renderEditorResults(result.afterFields, result.afterRows, `${result.affectedRows || 0} affected`)
-    addHistory(sql)
-    setStatus('Editor preview ready. Commit or Undo.')
-    return
-  }
-
   renderResults(result.beforeFields, result.beforeRows, null, 'current')
   renderPreviewResults(result.afterFields, result.afterRows, result.affectedRows, result.targetTable)
   showPanels('preview')
-  addHistory(sql)
   setStatus('Preview ready. Confirm Commit to persist, or Undo to rollback.')
 }
 
 async function commitPreview() {
   if (!state.pendingPreview) return
-
   setPreviewButtonsDisabled(true)
-  editorCommitBtn.disabled = true
-  editorUndoBtn.disabled = true
+
   const targetTable = state.pendingPreview.targetTable
-  const previewSource = state.pendingPreviewSource
-  const stagedSql = state.pendingPreview.sql
   const result = await window.db.commitPreview()
   setPreviewButtonsDisabled(false)
-  editorCommitBtn.disabled = false
-  editorUndoBtn.disabled = false
 
   if (!result.ok) {
-    if (previewSource === 'editor') {
-      editorCommitSummary.textContent = result.error
-    } else {
-      showPanels('error')
-      errorBody.textContent = result.error
-    }
+    showPanels('error')
+    errorBody.textContent = result.error
     setStatus('Commit failed')
     return
   }
 
   state.pendingPreview = null
-  state.pendingPreviewSource = null
   state.selectedRowIndices = []
   state.entryDraftActive = false
   state.entryDraftValues = {}
@@ -1280,20 +603,8 @@ async function commitPreview() {
 
   await loadSchema()
 
-  if (previewSource === 'editor') {
-    editorCommitPanel.classList.add('hidden')
-    editorCommitSummary.textContent = 'Edit committed.'
-    editorCommitSql.textContent = stagedSql
-    if (targetTable) {
-      const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
-      editorSqlInput.value = sql
-      await runQuery(sql, 'editor')
-    }
-    return
-  }
-
   if (targetTable) {
-    const sql = `SELECT * FROM ${targetTable} LIMIT 100;`
+    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
     queryInput.value = sql
     runQuery(sql)
   }
@@ -1301,30 +612,20 @@ async function commitPreview() {
 
 async function undoPreview() {
   if (!state.pendingPreview) return
-
   setPreviewButtonsDisabled(true)
-  editorCommitBtn.disabled = true
-  editorUndoBtn.disabled = true
+
   const targetTable = state.pendingPreview.targetTable
-  const previewSource = state.pendingPreviewSource
   const result = await window.db.undoPreview()
   setPreviewButtonsDisabled(false)
-  editorCommitBtn.disabled = false
-  editorUndoBtn.disabled = false
 
   if (!result.ok) {
-    if (previewSource === 'editor') {
-      editorCommitSummary.textContent = result.error
-    } else {
-      showPanels('error')
-      errorBody.textContent = result.error
-    }
+    showPanels('error')
+    errorBody.textContent = result.error
     setStatus('Undo failed')
     return
   }
 
   state.pendingPreview = null
-  state.pendingPreviewSource = null
   state.selectedRowIndices = []
   state.entryDraftActive = false
   state.entryDraftValues = {}
@@ -1334,20 +635,8 @@ async function undoPreview() {
   refreshEntryButtons()
   setStatus('Preview rolled back')
 
-  if (previewSource === 'editor') {
-    editorCommitPanel.classList.add('hidden')
-    editorCommitSummary.textContent = 'Preview rolled back. No schema/data edits were saved.'
-    await loadSchema()
-    if (targetTable) {
-      const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
-      editorSqlInput.value = sql
-      await runQuery(sql, 'editor')
-    }
-    return
-  }
-
   if (targetTable) {
-    const sql = `SELECT * FROM ${targetTable} LIMIT 100;`
+    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
     queryInput.value = sql
     runQuery(sql)
   }
@@ -1381,9 +670,7 @@ async function handleSaveEntry() {
 
   let sql = ''
   if (filledFields.length === 0) {
-    sql = state.driver === 'mysql'
-      ? `INSERT INTO ${tableRef} () VALUES ();`
-      : `INSERT INTO ${tableRef} DEFAULT VALUES;`
+    sql = `INSERT INTO ${tableRef} DEFAULT VALUES;`
   } else {
     const columnsSql = filledFields.map(quoteColumnIdentifier).join(', ')
     const valuesSql = filledFields.map(field => toSqlInputLiteral(state.entryDraftValues[field])).join(', ')
@@ -1439,20 +726,24 @@ async function saveCellEdit() {
     return
   }
 
-  const pk = getPrimaryKeyColumn(state.activeTable)
-  if (!pk) {
+  const pkFields = getPrimaryKeyColumns(state.activeTable)
+  if (pkFields.length === 0) {
     showPanels('error')
-    errorBody.textContent = 'Inline edit requires a primary key column on the selected table.'
+    errorBody.textContent = 'Inline edit requires at least one primary key column on the selected table.'
     setStatus('Cannot edit without primary key')
     cancelCellEdit()
     return
   }
 
   const row = state.resultRows[rowIndex]
-  const pkValue = row ? row[pk.column_name] : undefined
-  if (pkValue === undefined || pkValue === null) {
+  const whereClauses = pkFields.map(pk => {
+    const pkValue = row[pk.column_name]
+    return `${quoteColumnIdentifier(pk.column_name)} = ${toSqlLiteral(pkValue)}`
+  })
+
+  if (whereClauses.some(c => c.includes('= NULL'))) {
     showPanels('error')
-    errorBody.textContent = `Inline edit failed: missing primary key value (${pk.column_name}) on selected row.`
+    errorBody.textContent = `Inline edit failed: missing primary key value on selected row.`
     setStatus('Cannot edit selected row')
     cancelCellEdit()
     return
@@ -1460,8 +751,7 @@ async function saveCellEdit() {
 
   const tableRef = quoteTableIdentifier(state.activeTable)
   const targetCol = quoteColumnIdentifier(field)
-  const pkCol = quoteColumnIdentifier(pk.column_name)
-  const sql = `UPDATE ${tableRef} SET ${targetCol} = ${toSqlInputLiteral(value)} WHERE ${pkCol} = ${toSqlLiteral(pkValue)};`
+  const sql = `UPDATE ${tableRef} SET ${targetCol} = ${toSqlInputLiteral(value)} WHERE ${whereClauses.join(' AND ')};`
 
   state.cellEditDraft = null
   queryInput.value = sql
@@ -1469,57 +759,46 @@ async function saveCellEdit() {
 }
 
 async function handleRemoveEntry() {
-  if (!state.activeTable || state.pendingPreview) return
-  if (state.selectedRowIndices.length === 0) return
+  if (!state.activeTable || state.pendingPreview || state.selectedRowIndices.length === 0) return
 
-  const pk = getPrimaryKeyColumn(state.activeTable)
-  if (!pk) {
+  const pkFields = getPrimaryKeyColumns(state.activeTable)
+  if (pkFields.length === 0) {
     showPanels('error')
-    errorBody.textContent = 'Remove requires a primary key column on the selected table.'
+    errorBody.textContent = 'Remove requires at least one primary key column on the selected table.'
     setStatus('Cannot remove without primary key')
     return
   }
 
-  const selectedValues = state.selectedRowIndices
-    .map(index => state.resultRows[index]?.[pk.column_name])
-    .filter(value => value !== undefined && value !== null)
-
-  if (selectedValues.length === 0) {
-    showPanels('error')
-    errorBody.textContent = `Selected rows do not contain valid values for primary key: ${pk.column_name}.`
-    setStatus('Cannot remove selected rows')
-    return
-  }
-
+  // Handle composite or single PK by generating a DELETE statement with ORs or an IN clause
+  // For simplicity with composites, we will join them with OR if needed
   const tableRef = quoteTableIdentifier(state.activeTable)
-  const colRef = quoteColumnIdentifier(pk.column_name)
-  const valuesSql = selectedValues.map(toSqlLiteral).join(', ')
-  const sql = `DELETE FROM ${tableRef} WHERE ${colRef} IN (${valuesSql});`
+  
+  const whereParts = state.selectedRowIndices.map(index => {
+    const row = state.resultRows[index]
+    const conditions = pkFields.map(pk => {
+      return `${quoteColumnIdentifier(pk.column_name)} = ${toSqlLiteral(row[pk.column_name])}`
+    })
+    return `(${conditions.join(' AND ')})`
+  })
+
+  const sql = `DELETE FROM ${tableRef} WHERE ${whereParts.join(' OR ')};`
 
   queryInput.value = sql
   await runQuery(sql)
 }
 
-function getPrimaryKeyColumn(tableName) {
+function getPrimaryKeyColumns(tableName) {
   const cols = state.columns[tableName] || []
-  return cols.find(col => col.is_pk) || null
-}
-
-function quoteTableIdentifier(tableName) {
-  return quoteTableIdentifierWithDriver(tableName, state.driver)
-}
-
-function quoteColumnIdentifier(columnName) {
-  return quoteColumnIdentifierWithDriver(columnName, state.driver)
+  return cols.filter(col => col.is_pk)
 }
 
 function refreshEntryButtons() {
   const hasTable = Boolean(state.activeTable)
   const hasPendingPreview = Boolean(state.pendingPreview)
-  const hasPk = Boolean(getPrimaryKeyColumn(state.activeTable))
+  const pkCount = getPrimaryKeyColumns(state.activeTable).length
   const hasResultFields = state.resultFields.length > 0
   const hasCellEdit = Boolean(state.cellEditDraft)
-  const canRemove = hasTable && hasPk && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive && !hasCellEdit
+  const canRemove = hasTable && pkCount > 0 && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive && !hasCellEdit
 
   addEntryBtn.disabled = !hasTable || hasPendingPreview || state.entryDraftActive || hasCellEdit || !hasResultFields
   removeEntryBtn.disabled = !canRemove
@@ -1530,9 +809,8 @@ function refreshEntryButtons() {
   cancelEntryBtn.classList.toggle('hidden', !state.entryDraftActive)
 }
 
-
 /* ══════════════════════════════════════════
-   7. RESULTS RENDERER
+   6. RESULTS RENDERER
 ══════════════════════════════════════════ */
 
 function renderResults(fields, rows, ms, rightLabel = null) {
@@ -1545,10 +823,8 @@ function renderResults(fields, rows, ms, rightLabel = null) {
     state.cellEditDraft = null
   }
 
-  // Header row
-  resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
+  resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
 
-  // Body rows
   const dataRowsHtml = rows.map((row, index) =>
     `<tr class="result-row" data-row-index="${index}">` + fields.map(f => {
       const isEditing = state.cellEditDraft
@@ -1561,7 +837,7 @@ function renderResults(fields, rows, ms, rightLabel = null) {
 
       const val = row[f]
       if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
-      return `<td class="result-cell" data-field="${escapeHtml(f)}">${val}</td>`
+      return `<td class="result-cell" data-field="${escapeHtml(f)}">${escapeHtml(String(val))}</td>`
     }).join('') + '</tr>'
   ).join('')
 
@@ -1580,7 +856,7 @@ function renderResults(fields, rows, ms, rightLabel = null) {
     resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
   }
 
-  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${state.resultRightLabel}</span>`
+  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${escapeHtml(state.resultRightLabel)}</span>`
 
   bindEntryRowInputs()
   bindCellEditInput()
@@ -1719,13 +995,13 @@ function bindResultRowSelection() {
 }
 
 function renderPreviewResults(fields, rows, affectedRows, targetTable) {
-  previewHead.innerHTML = '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>'
+  previewHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
 
   previewBody.innerHTML = rows.map(row =>
     '<tr>' + fields.map(f => {
       const val = row[f]
       if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
-      return `<td>${val}</td>`
+      return `<td>${escapeHtml(String(val))}</td>`
     }).join('') + '</tr>'
   ).join('')
 
@@ -1735,7 +1011,7 @@ function renderPreviewResults(fields, rows, affectedRows, targetTable) {
   }
 
   previewSummary.textContent = targetTable
-    ? `Previewing staged changes on ${targetTable}.`
+    ? `Previewing staged changes on ${escapeHtml(targetTable)}.`
     : 'Previewing staged changes.'
   previewFooter.innerHTML = `<span>${rows.length} rows</span><span>${affectedRows || 0} affected</span>`
 }
@@ -1769,7 +1045,6 @@ function showPanels(mode) {
   } else if (mode === 'empty') {
     emptyState.classList.remove('hidden')
   }
-  // 'loading' just shows nothing while waiting
 }
 
 function setComparisonLayout(showPreview) {
@@ -1783,36 +1058,8 @@ function triggerPreviewPanelAnimation() {
   previewPanel.classList.add('preview-animate')
 }
 
-
 /* ══════════════════════════════════════════
-   8. HISTORY
-══════════════════════════════════════════ */
-
-function addHistory(sql) {
-  if (!historyList) return
-
-  state.queryHistory.unshift(sql)
-
-  const item = document.createElement('div')
-  item.className = 'history-item'
-  item.innerHTML = `
-    <div class="history-dot"></div>
-    <div class="history-text">${sql.slice(0, 60)}${sql.length > 60 ? '…' : ''}</div>
-  `
-  item.addEventListener('click', () => {
-    queryInput.value = sql
-  })
-
-  // Remove empty state if present
-  const empty = historyList.querySelector('.sidebar-empty')
-  if (empty) empty.remove()
-
-  historyList.prepend(item)
-}
-
-
-/* ══════════════════════════════════════════
-   9. UTILITY
+   7. UTILITY
 ══════════════════════════════════════════ */
 
 function setStatus(msg) {

@@ -41,23 +41,11 @@
   <div class="modal-overlay hidden" id="modalOverlay">
     <div class="modal">
       <div class="modal-header">
-        <span class="modal-title">New Connection</span>
+        <span class="modal-title">New PostgreSQL Connection</span>
         <button class="modal-close" id="modalClose">✕</button>
       </div>
 
       <div class="modal-body">
-
-        <!-- Driver tabs -->
-        <div class="field-group">
-          <label class="field-label">Database type</label>
-          <div class="driver-tabs">
-            <button class="driver-tab active" data-driver="postgres">PostgreSQL</button>
-            <button class="driver-tab" data-driver="mysql">MySQL</button>
-            <button class="driver-tab" data-driver="sqlite">SQLite</button>
-          </div>
-        </div>
-
-        <!-- Postgres / MySQL fields -->
         <div id="hostFields">
 
           <!-- Row 1: Host + Port -->
@@ -75,7 +63,7 @@
           <!-- Row 2: Database name -->
           <div class="field-group">
             <label class="field-label">Database</label>
-            <input class="field-input" id="fieldDatabase" type="text" placeholder="my_database" />
+            <input class="field-input" id="fieldDatabase" type="text" placeholder="postgres" />
           </div>
 
           <!-- Row 3: Username + Password -->
@@ -111,18 +99,6 @@
             <span class="conn-preview-value mono" id="connPreview">postgres://localhost:5432/</span>
           </div>
 
-        </div>
-
-        <!-- SQLite file path -->
-        <div class="hidden" id="fileGroup">
-          <div class="field-group">
-            <label class="field-label">Database file</label>
-            <div class="file-row">
-              <input class="field-input mono" id="filePathInput" type="text" placeholder="C:\path\to\database.db" />
-              <button class="file-browse-btn" id="fileBrowseBtn">Browse</button>
-            </div>
-            <span class="field-hint">Select an existing .db or .sqlite file</span>
-          </div>
         </div>
 
         <!-- Raw connection string input (shown when paste mode is toggled) -->
@@ -164,13 +140,8 @@
     <div class="sidebar-section">
       <div class="sidebar-label">Schema</div>
       <div id="schemaList">
-        <!-- Populated by JS: schema-table divs go here -->
         <div class="sidebar-empty">No connection</div>
       </div>
-    </div>
-
-    <div class="sidebar-action-row">
-      <button class="sidebar-action-btn" id="tableEditorBtn" title="Toggle table editor">Database Edit</button>
     </div>
 
   </aside>
@@ -179,31 +150,17 @@
   <!-- ── MAIN ── -->
   <main class="main">
 
-    <!-- Filter bar (TablePlus-style, hidden until a table is selected) -->
-    <div class="filter-bar hidden" id="filterBar">
-      <div class="filter-row" id="filterRows">
-        <!-- Filter pills added by JS -->
-      </div>
-      <div class="filter-actions">
-        <button class="filter-btn" id="addFilterBtn">+ Filter</button>
-        <button class="filter-btn" id="clearFiltersBtn">Clear</button>
-        <button class="filter-btn accent" id="applyFiltersBtn">Apply All</button>
-        <span class="filter-sep"></span>
-      </div>
-    </div>
-
-    <!-- Query / AI input zone -->
+    <!-- Query / input zone -->
     <div class="query-zone">
-      <div class="query-label">Ask a question</div>
+      <div class="query-label">SQL Query</div>
       <div class="query-row">
         <textarea
-          class="query-input"
+          class="query-input mono"
           id="queryInput"
           rows="1"
-          placeholder="e.g. Show the top 10 customers by total spend in the last 30 days"
+          placeholder="e.g. SELECT * FROM users LIMIT 10;"
         ></textarea>
         <button class="run-btn" id="runBtn">Run →</button>
-        <button class="filter-toggle-btn" id="filterToggleBtn" title="Show filters">⧉ Filter</button>
       </div>
     </div>
 
@@ -216,7 +173,7 @@
         <div class="empty-text">Connect to a database and run a query</div>
       </div>
 
-      <!-- STATE: Schema overview (shown on connect, hidden when query runs) -->
+      <!-- STATE: Schema overview -->
       <div class="hidden" id="schemaOverview">
         <div class="schema-overview-header">
           <span class="schema-overview-title" id="schemaOverviewTitle"></span>
@@ -225,7 +182,7 @@
         <div class="schema-grid" id="schemaGrid"></div>
       </div>
 
-      <!-- STATE: SQL panel (hidden until query runs) -->
+      <!-- STATE: SQL panel -->
       <div class="comparison-area hidden" id="comparisonArea">
         <div class="comparison-grid">
 
@@ -288,118 +245,6 @@
             </div>
           </div>
 
-        </div>
-      </div>
-
-      <!-- STATE: table editor screen -->
-      <div class="table-editor-screen hidden" id="tableEditorScreen">
-        <div class="editor-categories">
-          <button class="editor-category-btn active" id="editorCategoryTableBtn">Table Edit</button>
-          <button class="editor-category-btn" id="editorCategoryDatabaseBtn">Database Edit</button>
-        </div>
-
-        <div class="editor-category-section" id="tableEditSection">
-          <div class="table-editor-grid">
-            <div class="panel">
-              <div class="panel-head">
-                <span class="panel-title">Table Edit</span>
-              </div>
-              <div class="editor-form">
-                <label class="field-label" for="tableEditTableSelect">Target table</label>
-                <div class="editor-inline-actions">
-                  <select class="filter-select editor-select" id="tableEditTableSelect"></select>
-                  <button class="btn-ghost" id="editorLoadTableBtn">Load</button>
-                </div>
-
-                <label class="field-label" for="tableEditAddColumnNameInput">Add column name</label>
-                <input class="field-input mono" id="tableEditAddColumnNameInput" type="text" placeholder="e.g. source_ip" />
-
-                <label class="field-label" for="tableEditAddColumnTypeInput">Add column type</label>
-                <input class="field-input mono" id="tableEditAddColumnTypeInput" type="text" placeholder="e.g. VARCHAR(45)" />
-
-                <button class="btn-ghost" id="tableEditAddColumnPreviewBtn">Preview Add Column</button>
-
-                <label class="field-label" for="tableEditDropColumnSelect">Drop column</label>
-                <select class="filter-select editor-select" id="tableEditDropColumnSelect"></select>
-
-                <button class="btn-ghost" id="tableEditDropColumnPreviewBtn">Preview Drop Column</button>
-              </div>
-            </div>
-
-            <div class="panel">
-              <div class="panel-head">
-                <span class="panel-title">Table SQL</span>
-              </div>
-              <div class="editor-form">
-                <label class="field-label" for="editorSqlInput">Custom SQL</label>
-                <textarea class="query-input editor-textarea mono" id="editorSqlInput" rows="5" placeholder="Write SQL for the selected table and preview it"></textarea>
-
-                <button class="btn-primary" id="editorRunSqlBtn">Run In Table Edit</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="editor-category-section hidden" id="databaseEditSection">
-          <div class="table-editor-grid">
-            <div class="panel">
-              <div class="panel-head">
-                <span class="panel-title">Create Table</span>
-              </div>
-              <div class="editor-form">
-                <label class="field-label" for="dbCreateTableNameInput">Table name</label>
-                <input class="field-input mono" id="dbCreateTableNameInput" type="text" placeholder="e.g. audit_log" />
-
-                <label class="field-label" for="dbCreateColumnCountInput">Number of columns</label>
-                <div class="editor-inline-actions">
-                  <input class="field-input mono editor-count-input" id="dbCreateColumnCountInput" type="number" min="1" max="30" value="3" />
-                  <button class="btn-ghost" id="dbGenerateColumnsBtn">Build Columns</button>
-                </div>
-
-                <div class="db-create-columns" id="dbCreateColumnsContainer"></div>
-
-                <button class="btn-primary" id="dbCreateTablePreviewBtn">Preview Create Table</button>
-              </div>
-            </div>
-
-            <div class="panel">
-              <div class="panel-head">
-                <span class="panel-title">Drop Table</span>
-              </div>
-              <div class="editor-form">
-                <label class="field-label" for="dbDropTableSelect">Target table</label>
-                <select class="filter-select editor-select" id="dbDropTableSelect"></select>
-
-                <button class="btn-ghost" id="dbDropTablePreviewBtn">Preview Drop Table</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel hidden" id="editorCommitPanel">
-          <div class="panel-head">
-            <span class="panel-title">Editor Commit Preview</span>
-            <span class="badge badge-pending">pending</span>
-          </div>
-          <div class="preview-summary" id="editorCommitSummary">No staged edit yet.</div>
-          <div class="sql-body" id="editorCommitSql"></div>
-          <div class="preview-actions">
-            <button class="btn-ghost" id="editorUndoBtn">Undo</button>
-            <button class="btn-primary" id="editorCommitBtn">Confirm Commit</button>
-          </div>
-        </div>
-
-        <div class="panel hidden" id="editorResultsPanel">
-          <div class="panel-head">
-            <span class="panel-title">Editor Data View</span>
-          </div>
-          <div class="results-scroll">
-            <table>
-              <thead id="editorResultsHead"></thead>
-              <tbody id="editorResultsBody"></tbody>
-            </table>
-          </div>
-          <div class="results-footer" id="editorResultsFooter"></div>
         </div>
       </div>
 
