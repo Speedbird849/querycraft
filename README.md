@@ -2,7 +2,7 @@
 
 A lightweight desktop database GUI built with Electron.
 
-Supports **PostgreSQL** exclusively for a streamlined experience.
+Supports PostgreSQL.
 
 ## Setup
 
