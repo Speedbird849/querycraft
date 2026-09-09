@@ -48,6 +48,12 @@ ipcMain.handle('db:connect', async (_event, { connectionString }) => {
     client.on('error', (err) => {
       console.error('Unexpected DB error:', err)
       activeConnection = null
+      pendingPreview = false
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('db:connection-lost', { error: err?.message || String(err) })
+        }
+      })
     })
 
     await client.connect()

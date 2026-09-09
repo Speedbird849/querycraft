@@ -41,4 +41,11 @@ contextBridge.exposeInMainWorld('db', {
   // Rollback the currently previewed transaction
   undoPreview: () =>
     ipcRenderer.invoke('db:undo-preview'),
+
+  // Listen for dropped or lost database connection events
+  onConnectionLost: (callback) => {
+    const handler = (_event, data) => callback(data)
+    ipcRenderer.on('db:connection-lost', handler)
+    return () => ipcRenderer.removeListener('db:connection-lost', handler)
+  },
 })

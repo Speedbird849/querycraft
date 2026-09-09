@@ -299,6 +299,56 @@ async function handleDisconnect() {
   setStatus('Disconnected')
 }
 
+function handleConnectionLost(errorMessage) {
+  if (!state.connected) return
+
+  state.connected = false
+  state.tables = []
+  state.columns = {}
+  state.activeTable = null
+  state.pendingPreview = null
+  state.resultFields = []
+  state.resultRows = []
+  state.selectedRowIndices = []
+  state.resultRightLabel = ''
+  state.entryDraftActive = false
+  state.entryDraftValues = {}
+  state.cellEditDraft = null
+
+  setConnected(false)
+  schemaList.innerHTML = '<div class="sidebar-empty">Connection lost</div>'
+
+  sqlPanel.classList.add('hidden')
+  comparisonArea.classList.add('hidden')
+  previewPanel.classList.add('hidden')
+  resultsPanel.classList.add('hidden')
+  schemaOverview.classList.add('hidden')
+  schemaGrid.innerHTML = ''
+  emptyState.classList.add('hidden')
+
+  sqlBody.textContent = ''
+  resultsHead.innerHTML = ''
+  resultsBody.innerHTML = ''
+  resultsFooter.innerHTML = ''
+  previewHead.innerHTML = ''
+  previewBody.innerHTML = ''
+  previewFooter.innerHTML = ''
+  previewSummary.textContent = 'Run an UPDATE, INSERT, or DELETE to preview changes.'
+  queryInput.value = ''
+  queryInput.style.height = 'auto'
+  refreshEntryButtons()
+
+  showPanels('error')
+  errorBody.textContent = `Database connection lost: ${errorMessage || 'Connection terminated unexpectedly.'}`
+  setStatus('Connection lost')
+}
+
+if (window.db?.onConnectionLost) {
+  window.db.onConnectionLost((data) => {
+    handleConnectionLost(data?.error)
+  })
+}
+
 function setConnected(yes) {
   dbDot.className = 'db-dot ' + (yes ? 'connected' : 'disconnected')
   dbLabel.textContent = yes ? state.dbName : 'Not connected'
