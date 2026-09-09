@@ -216,9 +216,22 @@ function buildConnectionString() {
 }
 
 modalConnect.addEventListener('click', handleConnect)
-fieldPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnect() })
+modalOverlay.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (e.target && e.target.tagName === 'BUTTON' && e.target !== modalConnect) {
+      return
+    }
+    e.preventDefault()
+    handleConnect()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeModal()
+  }
+})
 
 async function handleConnect() {
+  if (modalConnect.disabled) return
+
   const connString = (pasteMode && rawConnInput.value.trim())
     ? rawConnInput.value.trim()
     : buildConnectionString()
