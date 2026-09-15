@@ -515,7 +515,6 @@ function selectTable(tableName) {
   syncActiveSchemaTable()
   state.selectedRowIndices = []
   refreshEntryButtons()
-  const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)} LIMIT 100;`
   const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)};`
   queryInput.value = sql
   runQuery(sql)
@@ -618,7 +617,6 @@ async function runQuery(sql) {
   showPanels('loading')
   const start = Date.now()
 
-  const result = await window.db.query(sql)
   const trimmed = sql.trim().replace(/;+\s*$/, '')
   const paginatable = canPaginateQuery(trimmed)
 
@@ -659,7 +657,6 @@ async function runQuery(sql) {
 
   renderResults(result.fields, result.rows, ms)
   showPanels('results')
-  setStatus(`${result.rows.length} rows · ${ms}ms`)
 
   if (resultsScroll) {
     resultsScroll.scrollTop = 0
@@ -734,7 +731,6 @@ async function commitPreview() {
   await loadSchema()
 
   if (targetTable) {
-    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
     const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)};`
     queryInput.value = sql
     runQuery(sql)
@@ -767,7 +763,6 @@ async function undoPreview() {
   setStatus('Preview rolled back')
 
   if (targetTable) {
-    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
     const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)};`
     queryInput.value = sql
     runQuery(sql)
@@ -942,7 +937,6 @@ function refreshEntryButtons() {
 }
 
 /* ══════════════════════════════════════════
-   6. RESULTS RENDERER
    6. RESULTS RENDERER & DYNAMIC WINDOWING
 ══════════════════════════════════════════ */
 
@@ -974,19 +968,6 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
 
   const dataRowsHtml = rows.map((row, index) =>
-    `<tr class="result-row" data-row-index="${index}">` + fields.map(f => {
-      const isEditing = state.cellEditDraft
-        && state.cellEditDraft.rowIndex === index
-        && state.cellEditDraft.field === f
-
-      if (isEditing) {
-        return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
-      }
-
-      const val = row[f]
-      if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
-      return `<td class="result-cell" data-field="${escapeHtml(f)}">${escapeHtml(String(val))}</td>`
-    }).join('') + '</tr>'
     renderRowHtml(row, index, fields)
   ).join('')
 
@@ -1005,13 +986,9 @@ function renderResults(fields, rows, ms, rightLabel = null) {
     resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
   }
 
-  resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${escapeHtml(state.resultRightLabel)}</span>`
-
   updateFooterStatus()
   bindEntryRowInputs()
   bindCellEditInput()
-  bindResultCellEditing()
-  bindResultRowSelection()
   refreshEntryButtons()
 }
 
@@ -1236,56 +1213,6 @@ function autoSizeCellEditInput(input) {
 
   input.style.width = `${targetWidth}px`
   input.style.maxWidth = `${maxWidth}px`
-}
-
-function bindResultCellEditing() {
-  const cells = resultsBody.querySelectorAll('.result-row .result-cell')
-  cells.forEach(cellEl => {
-    cellEl.addEventListener('dblclick', (e) => {
-      if (state.pendingPreview || state.entryDraftActive) return
-
-      const rowEl = e.currentTarget.closest('.result-row')
-      if (!rowEl) return
-
-      const rowIndex = Number(rowEl.dataset.rowIndex)
-      const field = e.currentTarget.dataset.field
-      if (!Number.isInteger(rowIndex) || !field) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      startCellEdit(rowIndex, field)
-    })
-  })
-}
-
-function bindResultRowSelection() {
-  const rows = resultsBody.querySelectorAll('.result-row')
-  rows.forEach(rowEl => {
-    rowEl.addEventListener('click', (e) => {
-      if (state.pendingPreview || !state.activeTable || state.entryDraftActive || state.cellEditDraft) return
-      const rowIndex = Number(rowEl.dataset.rowIndex)
-      if (!Number.isInteger(rowIndex)) return
-
-      const multiSelect = e.ctrlKey || e.metaKey
-
-      if (multiSelect) {
-        if (state.selectedRowIndices.includes(rowIndex)) {
-          state.selectedRowIndices = state.selectedRowIndices.filter(i => i !== rowIndex)
-        } else {
-          state.selectedRowIndices.push(rowIndex)
-        }
-      } else {
-        state.selectedRowIndices = [rowIndex]
-      }
-
-      rows.forEach(el => {
-        const idx = Number(el.dataset.rowIndex)
-        el.classList.toggle('selected', state.selectedRowIndices.includes(idx))
-      })
-
-      refreshEntryButtons()
-    })
-  })
 }
 
 function renderPreviewResults(fields, rows, affectedRows, targetTable) {
