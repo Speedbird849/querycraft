@@ -159,6 +159,7 @@
           id="queryInput"
           rows="1"
           placeholder="e.g. SELECT * FROM users LIMIT 10;"
+          placeholder="e.g. SELECT * FROM users;"
         ></textarea>
         <button class="run-btn" id="runBtn">Run →</button>
       </div>
@@ -206,6 +207,7 @@
                 </div>
               </div>
               <div class="results-scroll">
+              <div class="results-scroll" id="resultsScroll">
                 <table id="resultsTable">
                   <thead id="resultsHead"></thead>
                   <tbody id="resultsBody"></tbody>

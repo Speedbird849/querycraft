@@ -226,8 +226,10 @@ function quoteIdentifier(tableName) {
 }
 
 async function fetchTableSnapshot(tableName) {
+async function fetchTableSnapshot(tableName, limit = 500) {
   const tableRef = quoteIdentifier(tableName)
   return executeSql(`SELECT * FROM ${tableRef} LIMIT 100`)
+  return executeSql(`SELECT * FROM ${tableRef} LIMIT ${limit}`)
 }
 
 async function safeFetchTableSnapshot(tableName) {

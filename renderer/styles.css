@@ -706,10 +706,17 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 /* Results table */
 .results-scroll { overflow-x: auto; }
+.results-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 270px);
+}
 
 table { width: 100%; border-collapse: collapse; }
 
 thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   padding: 7px 14px;
   text-align: left;
   font-size: 10px;

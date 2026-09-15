@@ -52,6 +52,7 @@ const sqlBody        = document.getElementById('sqlBody')
 const sqlBadge       = document.getElementById('sqlBadge')
 
 const resultsPanel   = document.getElementById('resultsPanel')
+const resultsScroll  = document.getElementById('resultsScroll')
 const resultsHead    = document.getElementById('resultsHead')
 const resultsBody    = document.getElementById('resultsBody')
 const resultsFooter  = document.getElementById('resultsFooter')
@@ -79,6 +80,17 @@ const statusDriver   = document.getElementById('statusDriver')
 /* ══════════════════════════════════════════
    2. STATE
 ══════════════════════════════════════════ */
+const PAGE_SIZE = 50
+
+const pagination = {
+  baseSql: '',
+  isPaginatable: false,
+  offset: 0,
+  pageSize: PAGE_SIZE,
+  hasMore: false,
+  loading: false,
+}
+
 const state = {
   connected: false,
   dbName: '',
@@ -504,8 +516,24 @@ function selectTable(tableName) {
   state.selectedRowIndices = []
   refreshEntryButtons()
   const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)} LIMIT 100;`
+  const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)};`
   queryInput.value = sql
   runQuery(sql)
+}
+
+function canPaginateQuery(sql) {
+  const trimmed = sql.trim().replace(/;+\s*$/, '')
+  if (!/^(select|with)\b/i.test(trimmed)) return false
+  if (/\blimit\s+\d+/i.test(trimmed)) return false
+  return true
+}
+
+function buildWindowSql(sql, limit, offset) {
+  const trimmed = sql.trim().replace(/;+\s*$/, '')
+  if (/\b(union|intersect|except)\b/i.test(trimmed)) {
+    return `SELECT * FROM (\n${trimmed}\n) AS _window LIMIT ${limit} OFFSET ${offset};`
+  }
+  return `${trimmed}\nLIMIT ${limit} OFFSET ${offset};`
 }
 
 /* ══════════════════════════════════════════
@@ -537,6 +565,9 @@ confirmPreviewBtn.addEventListener('click', commitPreview)
 undoPreviewBtn.addEventListener('click', undoPreview)
 errorReturnBtn.addEventListener('click', returnToSchemaOverview)
 document.addEventListener('keydown', handleGlobalShortcuts)
+if (resultsScroll) {
+  resultsScroll.addEventListener('scroll', handleResultsScroll)
+}
 refreshEntryButtons()
 
 function handleGlobalShortcuts(e) {
@@ -588,9 +619,29 @@ async function runQuery(sql) {
   const start = Date.now()
 
   const result = await window.db.query(sql)
+  const trimmed = sql.trim().replace(/;+\s*$/, '')
+  const paginatable = canPaginateQuery(trimmed)
+
+  pagination.baseSql = trimmed
+  pagination.isPaginatable = paginatable
+  pagination.offset = 0
+  pagination.pageSize = PAGE_SIZE
+  pagination.hasMore = false
+  pagination.loading = false
+
+  let execSql = paginatable ? buildWindowSql(trimmed, PAGE_SIZE, 0) : sql
+  let result = await window.db.query(execSql)
+
+  if (paginatable && !result.ok) {
+    // If windowed query failed, fall back to running raw sql directly
+    pagination.isPaginatable = false
+    result = await window.db.query(sql)
+  }
+
   const ms = Date.now() - start
 
   if (!result.ok) {
+    pagination.isPaginatable = false
     showPanels('error')
     errorBody.textContent = result.error
     setStatus('Query failed')
@@ -601,9 +652,25 @@ async function runQuery(sql) {
   sqlBadge.textContent = '✓ safe'
   sqlBadge.className = 'badge badge-safe'
 
+  if (pagination.isPaginatable) {
+    pagination.offset = result.rows.length
+    pagination.hasMore = result.rows.length === PAGE_SIZE
+  }
+
   renderResults(result.fields, result.rows, ms)
   showPanels('results')
   setStatus(`${result.rows.length} rows · ${ms}ms`)
+
+  if (resultsScroll) {
+    resultsScroll.scrollTop = 0
+  }
+
+  if (pagination.isPaginatable && pagination.hasMore) {
+    setStatus(`${result.rows.length} rows loaded · ${ms}ms · scroll for more`)
+    void maybeFillViewport()
+  } else {
+    setStatus(`${result.rows.length} rows · ${ms}ms`)
+  }
 }
 
 async function runMutationPreview(sql) {
@@ -668,6 +735,7 @@ async function commitPreview() {
 
   if (targetTable) {
     const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
+    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)};`
     queryInput.value = sql
     runQuery(sql)
   }
@@ -700,6 +768,7 @@ async function undoPreview() {
 
   if (targetTable) {
     const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)} LIMIT 100;`
+    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)};`
     queryInput.value = sql
     runQuery(sql)
   }
@@ -874,7 +943,23 @@ function refreshEntryButtons() {
 
 /* ══════════════════════════════════════════
    6. RESULTS RENDERER
+   6. RESULTS RENDERER & DYNAMIC WINDOWING
 ══════════════════════════════════════════ */
+
+function renderRowHtml(row, index, fields) {
+  const isEditing = state.cellEditDraft && state.cellEditDraft.rowIndex === index
+  const isSelected = state.selectedRowIndices.includes(index)
+
+  return `<tr class="result-row${isSelected ? ' selected' : ''}" data-row-index="${index}">` + fields.map(f => {
+    if (isEditing && state.cellEditDraft.field === f) {
+      return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
+    }
+
+    const val = row[f]
+    if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
+    return `<td class="result-cell" data-field="${escapeHtml(f)}">${escapeHtml(String(val))}</td>`
+  }).join('') + '</tr>'
+}
 
 function renderResults(fields, rows, ms, rightLabel = null) {
   state.resultFields = fields
@@ -902,6 +987,7 @@ function renderResults(fields, rows, ms, rightLabel = null) {
       if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
       return `<td class="result-cell" data-field="${escapeHtml(f)}">${escapeHtml(String(val))}</td>`
     }).join('') + '</tr>'
+    renderRowHtml(row, index, fields)
   ).join('')
 
   let draftRowHtml = ''
@@ -921,12 +1007,157 @@ function renderResults(fields, rows, ms, rightLabel = null) {
 
   resultsFooter.innerHTML = `<span>${rows.length} rows</span><span>${escapeHtml(state.resultRightLabel)}</span>`
 
+  updateFooterStatus()
   bindEntryRowInputs()
   bindCellEditInput()
   bindResultCellEditing()
   bindResultRowSelection()
   refreshEntryButtons()
 }
+
+function appendResults(newRows) {
+  const startIndex = state.resultRows.length
+  state.resultRows = state.resultRows.concat(newRows)
+
+  const newRowsHtml = newRows.map((row, i) =>
+    renderRowHtml(row, startIndex + i, state.resultFields)
+  ).join('')
+
+  resultsBody.insertAdjacentHTML('beforeend', newRowsHtml)
+  updateFooterStatus()
+  refreshEntryButtons()
+}
+
+function updateFooterStatus() {
+  const count = state.resultRows.length
+  let text = ''
+  if (pagination.loading) {
+    text = `<span>${count} rows loaded · loading more…</span>`
+  } else if (pagination.isPaginatable && pagination.hasMore) {
+    text = `<span>${count} rows loaded · scroll for more</span>`
+  } else if (pagination.isPaginatable && !pagination.hasMore) {
+    text = `<span>All ${count} rows loaded</span>`
+  } else {
+    text = `<span>${count} rows</span>`
+  }
+  resultsFooter.innerHTML = `${text}<span>${escapeHtml(state.resultRightLabel)}</span>`
+}
+
+async function loadNextWindow() {
+  if (!pagination.isPaginatable || !pagination.hasMore || pagination.loading) return
+
+  pagination.loading = true
+  updateFooterStatus()
+
+  const offset = state.resultRows.length
+  const nextSql = buildWindowSql(pagination.baseSql, pagination.pageSize, offset)
+
+  try {
+    const result = await window.db.query(nextSql)
+    if (!result.ok) {
+      pagination.hasMore = false
+      setStatus(`Error loading more rows: ${result.error}`)
+      return
+    }
+
+    const newRows = result.rows || []
+    if (newRows.length === 0) {
+      pagination.hasMore = false
+    } else {
+      if (newRows.length < pagination.pageSize) {
+        pagination.hasMore = false
+      }
+      appendResults(newRows)
+      setStatus(`${state.resultRows.length} rows loaded`)
+    }
+  } catch (err) {
+    pagination.hasMore = false
+    setStatus(`Failed to load more rows: ${err.message}`)
+  } finally {
+    pagination.loading = false
+    updateFooterStatus()
+  }
+}
+
+let scrollTicking = false
+function handleResultsScroll() {
+  if (scrollTicking) return
+  scrollTicking = true
+  requestAnimationFrame(() => {
+    scrollTicking = false
+    if (!pagination.isPaginatable || !pagination.hasMore || pagination.loading) return
+    const threshold = 160
+    const { scrollTop, scrollHeight, clientHeight } = resultsScroll
+    if (scrollTop + clientHeight >= scrollHeight - threshold) {
+      void loadNextWindow()
+    }
+  })
+}
+
+async function maybeFillViewport() {
+  if (!resultsScroll) return
+  let attempts = 0
+  while (
+    pagination.isPaginatable &&
+    pagination.hasMore &&
+    !pagination.loading &&
+    attempts < 4 &&
+    resultsScroll.scrollHeight <= resultsScroll.clientHeight + 80
+  ) {
+    attempts++
+    await loadNextWindow()
+  }
+}
+
+// Delegated row selection on resultsBody
+resultsBody.addEventListener('click', (e) => {
+  const cellEl = e.target.closest('.result-cell')
+  if (!cellEl) return
+  const rowEl = cellEl.closest('.result-row')
+  if (!rowEl) return
+  if (state.pendingPreview || !state.activeTable || state.entryDraftActive || state.cellEditDraft) return
+
+  const rowIndex = Number(rowEl.dataset.rowIndex)
+  if (!Number.isInteger(rowIndex)) return
+
+  const multiSelect = e.ctrlKey || e.metaKey
+
+  if (multiSelect) {
+    if (state.selectedRowIndices.includes(rowIndex)) {
+      state.selectedRowIndices = state.selectedRowIndices.filter(i => i !== rowIndex)
+    } else {
+      state.selectedRowIndices.push(rowIndex)
+    }
+  } else {
+    state.selectedRowIndices = [rowIndex]
+  }
+
+  resultsBody.querySelectorAll('.result-row').forEach(el => {
+    const idx = Number(el.dataset.rowIndex)
+    el.classList.toggle('selected', state.selectedRowIndices.includes(idx))
+  })
+
+  refreshEntryButtons()
+})
+
+// Delegated double-click cell editing on resultsBody
+resultsBody.addEventListener('dblclick', (e) => {
+  if (state.pendingPreview || state.entryDraftActive) return
+
+  const cellEl = e.target.closest('.result-cell')
+  if (!cellEl) return
+
+  const rowEl = cellEl.closest('.result-row')
+  if (!rowEl) return
+
+  const rowIndex = Number(rowEl.dataset.rowIndex)
+  const field = cellEl.dataset.field
+  if (!Number.isInteger(rowIndex) || !field) return
+
+  e.preventDefault()
+  e.stopPropagation()
+  startCellEdit(rowIndex, field)
+})
 
 function bindEntryRowInputs() {
   const inputs = resultsBody.querySelectorAll('.entry-cell-input')
