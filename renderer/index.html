@@ -183,19 +183,11 @@
         <div class="schema-grid" id="schemaGrid"></div>
       </div>
 
-      <!-- STATE: SQL panel -->
+      <!-- STATE: SQL / Results panel -->
       <div class="comparison-area hidden" id="comparisonArea">
         <div class="comparison-grid">
 
           <div class="comparison-col">
-            <div class="panel hidden" id="sqlPanel">
-              <div class="panel-head">
-                <span class="panel-title">Generated SQL</span>
-                <span class="badge badge-safe" id="sqlBadge">✓ safe</span>
-              </div>
-              <div class="sql-body" id="sqlBody"></div>
-            </div>
-            
             <div class="panel hidden" id="resultsPanel">
               <div class="panel-head">
                 <span class="panel-title">Current Data</span>
@@ -206,7 +198,6 @@
                   <button class="panel-action-btn hidden" id="cancelEntryBtn">Cancel</button>
                 </div>
               </div>
-              <div class="results-scroll">
               <div class="results-scroll" id="resultsScroll">
                 <table id="resultsTable">
                   <thead id="resultsHead"></thead>

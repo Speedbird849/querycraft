@@ -47,10 +47,6 @@ const schemaGrid       = document.getElementById('schemaGrid')
 const comparisonArea = document.getElementById('comparisonArea')
 const comparisonGrid = document.querySelector('.comparison-grid')
 
-const sqlPanel       = document.getElementById('sqlPanel')
-const sqlBody        = document.getElementById('sqlBody')
-const sqlBadge       = document.getElementById('sqlBadge')
-
 const resultsPanel   = document.getElementById('resultsPanel')
 const resultsScroll  = document.getElementById('resultsScroll')
 const resultsHead    = document.getElementById('resultsHead')
@@ -288,7 +284,6 @@ async function handleDisconnect() {
   setConnected(false)
   schemaList.innerHTML = '<div class="sidebar-empty">No connection</div>'
 
-  sqlPanel.classList.add('hidden')
   comparisonArea.classList.add('hidden')
   previewPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
@@ -296,7 +291,6 @@ async function handleDisconnect() {
   schemaOverview.classList.add('hidden')
   schemaGrid.innerHTML = ''
   emptyState.classList.remove('hidden')
-  sqlBody.textContent = ''
   resultsHead.innerHTML = ''
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
@@ -330,7 +324,6 @@ function handleConnectionLost(errorMessage) {
   setConnected(false)
   schemaList.innerHTML = '<div class="sidebar-empty">Connection lost</div>'
 
-  sqlPanel.classList.add('hidden')
   comparisonArea.classList.add('hidden')
   previewPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
@@ -338,7 +331,6 @@ function handleConnectionLost(errorMessage) {
   schemaGrid.innerHTML = ''
   emptyState.classList.add('hidden')
 
-  sqlBody.textContent = ''
   resultsHead.innerHTML = ''
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
@@ -646,10 +638,6 @@ async function runQuery(sql) {
     return
   }
 
-  sqlBody.textContent = sql
-  sqlBadge.textContent = '✓ safe'
-  sqlBadge.className = 'badge badge-safe'
-
   if (pagination.isPaginatable) {
     pagination.offset = result.rows.length
     pagination.hasMore = result.rows.length === PAGE_SIZE
@@ -693,10 +681,6 @@ async function runMutationPreview(sql) {
   state.entryDraftValues = {}
   state.cellEditDraft = null
   refreshEntryButtons()
-
-  sqlBody.textContent = sql
-  sqlBadge.textContent = 'pending commit'
-  sqlBadge.className = 'badge badge-pending'
 
   renderResults(result.beforeFields, result.beforeRows, null, 'current')
   renderPreviewResults(result.afterFields, result.afterRows, result.affectedRows, result.targetTable)
@@ -1242,19 +1226,16 @@ function showPanels(mode) {
   emptyState.classList.add('hidden')
   schemaOverview.classList.add('hidden')
   comparisonArea.classList.add('hidden')
-  sqlPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   previewPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
 
   if (mode === 'results') {
     comparisonArea.classList.remove('hidden')
-    sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
   } else if (mode === 'preview') {
     setComparisonLayout(true)
     comparisonArea.classList.remove('hidden')
-    sqlPanel.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
     previewPanel.classList.remove('hidden')
     triggerPreviewPanelAnimation()
