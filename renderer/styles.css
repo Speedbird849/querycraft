@@ -579,7 +579,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   flex-direction: column;
   gap: 14px;
 }
-
+.comparison-area.active {
   color: var(--accent);
   border-color: rgba(74,222,128,0.35);
   background: rgba(74,222,128,0.1);
@@ -663,13 +663,21 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 
 .panel-action-btn:hover:not(:disabled) {
-  color: var(--text);
+  /* color: var(--text); */
+  color: var(--danger);
+  border-color: rgba(248,113,113,0.35);
   background: var(--surface3);
+  transition: all 0.2s;
 }
 
 .panel-action-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+#addEntryBtn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: rgba(74,222,128,0.35);
 }
 
 .panel-title {
