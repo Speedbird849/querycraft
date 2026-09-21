@@ -406,7 +406,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   transition: background-color 0.15s ease;
 }
 .schema-table-header:hover { background: var(--surface3); }
-.schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; }
 .schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; flex-shrink: 0; }
 .schema-table-header .tbl-name {
   flex: 1;
@@ -434,7 +433,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 
 .tbl-toggle-btn {
-  margin-left: auto;
   width: 18px;
   height: 18px;
   border: 1px solid var(--border2);
