@@ -65,6 +65,7 @@ const statusDriver   = document.getElementById('statusDriver')
 
 /* ══════════════════════════════════════════
    2. STATE & STAGED CHANGES
+   2. STATE & GLOBAL STAGED CHANGES
 ══════════════════════════════════════════ */
 const PAGE_SIZE = 50
 
@@ -86,31 +87,113 @@ const state = {
   resultFields: [],
   resultRows: [],
   selectedRowIndices: [],
+  selectedRowKeys: new Set(),
   resultRightLabel: '',
   cellEditDraft: null,
+  cellEditDraft: null, // { rowKey, isInsert, field, value, originalValue }
 }
 
 const stagedChanges = {
   updates: new Map(), // rowIndex -> Map(field -> newValue)
   inserts: [],        // array of row objects { [field]: val }
   deletes: new Set(), // Set of rowIndex
+// Global staged changes across all tables:
+// Map(tableName -> {
+//   updates: Map(pkKey -> { pkWhere: { col: val }, changes: Map(field -> newVal), originalValues: { col: val } }),
+//   inserts: [ { clientId: string, values: { [field]: val } } ],
+//   deletes: Map(pkKey -> { pkWhere: { col: val }, row: {...} })
+// })
+const stagedChanges = new Map()
+
+let nextInsertId = 1
+function createInsertClientId() {
+  return `ins_${Date.now()}_${nextInsertId++}`
 }
 
 function getStagedCount() {
+function getTableStaged(tableName) {
+  if (!stagedChanges.has(tableName)) {
+    stagedChanges.set(tableName, {
+      updates: new Map(),
+      inserts: [],
+      deletes: new Map(),
+    })
+  }
+  return stagedChanges.get(tableName)
+}
+
+function cleanupTableStaged(tableName) {
+  if (!stagedChanges.has(tableName)) return
+  const entry = stagedChanges.get(tableName)
+  if (entry.updates.size === 0 && entry.inserts.length === 0 && entry.deletes.size === 0) {
+    stagedChanges.delete(tableName)
+  }
+}
+
+function getTableStagedCount(tableName) {
+  if (!tableName || !stagedChanges.has(tableName)) return 0
+  const entry = stagedChanges.get(tableName)
   let updateCount = 0
   for (const [rowIndex] of stagedChanges.updates) {
     if (!stagedChanges.deletes.has(rowIndex)) {
+  for (const [pkKey] of entry.updates) {
+    if (!entry.deletes.has(pkKey)) {
       updateCount++
     }
   }
   return stagedChanges.inserts.length + stagedChanges.deletes.size + updateCount
+  return entry.inserts.length + entry.deletes.size + updateCount
 }
 
 function clearStagedChanges() {
   stagedChanges.updates.clear()
   stagedChanges.inserts = []
   stagedChanges.deletes.clear()
+function getGlobalStagedCount() {
+  let total = 0
+  for (const tableName of stagedChanges.keys()) {
+    total += getTableStagedCount(tableName)
+  }
+  return total
+}
+
+function clearAllStagedChanges() {
+  stagedChanges.clear()
+  syncSidebarStagedBadges()
   updateStagedButtons()
+}
+
+function getPrimaryKeyColumns(tableName) {
+  if (!tableName) return []
+  const cols = state.columns[tableName] || []
+  return cols.filter(col => col.is_pk)
+}
+
+function getRowPkKey(tableName, row) {
+  if (!tableName || !row) return null
+  const pkCols = getPrimaryKeyColumns(tableName)
+  if (!pkCols || pkCols.length === 0) return null
+
+  const sortedCols = [...pkCols].sort((a, b) => a.column_name.localeCompare(b.column_name))
+  const keyParts = []
+  for (const col of sortedCols) {
+    const val = row[col.column_name]
+    if (val === undefined || val === null) return null
+    keyParts.push([col.column_name, String(val)])
+  }
+  return JSON.stringify(keyParts)
+}
+
+function getRowPkWhere(tableName, row) {
+  if (!tableName || !row) return null
+  const pkCols = getPrimaryKeyColumns(tableName)
+  if (!pkCols || pkCols.length === 0) return null
+
+  const where = {}
+  for (const col of pkCols) {
+    where[col.column_name] = row[col.column_name]
+  }
+  return where
 }
 
 
@@ -150,6 +233,7 @@ connectBtn.addEventListener('click', () => {
 refreshBtn.addEventListener('click', async () => {
   if (!state.connected) return
   if (getStagedCount() > 0) {
+  if (getGlobalStagedCount() > 0) {
     setStatus('Commit or discard staged changes before refreshing schema.')
     return
   }
@@ -286,9 +370,11 @@ async function handleDisconnect() {
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
+  state.selectedRowKeys.clear()
   state.resultRightLabel = ''
   state.cellEditDraft = null
   clearStagedChanges()
+  clearAllStagedChanges()
 
   setConnected(false)
   schemaList.innerHTML = '<div class="sidebar-empty">No connection</div>'
@@ -319,9 +405,11 @@ function handleConnectionLost(errorMessage) {
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
+  state.selectedRowKeys.clear()
   state.resultRightLabel = ''
   state.cellEditDraft = null
   clearStagedChanges()
+  clearAllStagedChanges()
 
   setConnected(false)
   schemaList.innerHTML = '<div class="sidebar-empty">Connection lost</div>'
@@ -400,6 +488,7 @@ async function loadSchema() {
     state.activeTable = null
   }
   syncActiveSchemaTable()
+  syncSidebarStagedBadges()
   renderSchemaOverview(result.tables)
   setStatus(`${result.tables.length} tables loaded`)
 }
@@ -451,6 +540,8 @@ function buildTableNode(tableName, columns) {
   header.innerHTML = `
     <span class="tbl-icon">▤</span>
     <span>${escapeHtml(tableName)}</span>
+    <span class="tbl-name">${escapeHtml(tableName)}</span>
+    <span class="tbl-staged-badge hidden" data-table="${escapeHtml(tableName)}">0</span>
     <button class="tbl-toggle-btn" type="button" aria-label="Collapse columns" aria-expanded="true" title="Collapse">−</button>
   `
 
@@ -499,12 +590,30 @@ function syncActiveSchemaTable() {
   })
 }
 
+function syncSidebarStagedBadges() {
+  const badges = schemaList.querySelectorAll('.tbl-staged-badge')
+  badges.forEach(badge => {
+    const table = badge.dataset.table
+    const count = getTableStagedCount(table)
+    if (count > 0) {
+      badge.textContent = count
+      badge.classList.remove('hidden')
+    } else {
+      badge.textContent = '0'
+      badge.classList.add('hidden')
+    }
+  })
+}
+
 function selectTable(tableName) {
   state.activeTable = tableName
   syncActiveSchemaTable()
   clearStagedChanges()
   state.selectedRowIndices = []
+  state.selectedRowKeys.clear()
+  state.cellEditDraft = null
   updateStagedButtons()
+  syncSidebarStagedBadges()
   const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)};`
   queryInput.value = sql
   runQuery(sql)
@@ -642,18 +751,31 @@ function updateStagedButtons() {
   const hasResultFields = state.resultFields.length > 0
   const hasCellEdit = Boolean(state.cellEditDraft)
   const count = getStagedCount()
+  const totalCount = getGlobalStagedCount()
 
   addRowBtn.disabled = !hasTable || !hasResultFields || hasCellEdit
 
   const hasDbRows = state.selectedRowIndices.some(idx => idx >= 0)
   const canDelete = hasTable && state.selectedRowIndices.length > 0 && (!hasDbRows || pkCount > 0) && !hasCellEdit
+  const hasSelected = state.selectedRowKeys.size > 0
+  let canDelete = false
+  if (hasTable && hasSelected && !hasCellEdit) {
+    const tableEntry = stagedChanges.get(state.activeTable)
+    const hasDbRows = Array.from(state.selectedRowKeys).some(key => {
+      const isInsert = tableEntry && tableEntry.inserts.some(i => i.clientId === key)
+      return !isInsert
+    })
+    canDelete = !hasDbRows || pkCount > 0
+  }
   removeEntryBtn.disabled = !canDelete
 
   if (count > 0) {
+  if (totalCount > 0) {
     stagedSep.classList.remove('hidden')
     discardChangesBtn.classList.remove('hidden')
     commitChangesBtn.classList.remove('hidden')
     commitChangesBtn.textContent = `Commit (${count})`
+    commitChangesBtn.textContent = `Commit (${totalCount})`
   } else {
     stagedSep.classList.add('hidden')
     discardChangesBtn.classList.add('hidden')
@@ -670,31 +792,52 @@ function handleAddRow() {
   if (!state.activeTable || state.resultFields.length === 0) return
 
   const newRow = {}
+  const clientId = createInsertClientId()
+  const values = {}
   for (const f of state.resultFields) {
     newRow[f] = ''
+    values[f] = ''
   }
 
   stagedChanges.inserts.unshift(newRow)
   state.selectedRowIndices = [-1]
+  const tableEntry = getTableStaged(state.activeTable)
+  tableEntry.inserts.unshift({ clientId, values })
+
+  state.selectedRowKeys = new Set([clientId])
   updateStagedButtons()
+  syncSidebarStagedBadges()
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 
   if (state.resultFields.length > 0) {
     startCellEdit(-1, state.resultFields[0])
+    startCellEdit(clientId, true, state.resultFields[0])
   }
 }
 
 function handleDeleteSelected() {
   if (!state.activeTable || state.selectedRowIndices.length === 0) return
+  if (!state.activeTable || state.selectedRowKeys.size === 0) return
 
   const pkFields = getPrimaryKeyColumns(state.activeTable)
   const hasDbRows = state.selectedRowIndices.some(idx => idx >= 0)
+  const tableName = state.activeTable
+  const pkFields = getPrimaryKeyColumns(tableName)
+  const tableEntry = getTableStaged(tableName)
 
   if (hasDbRows && pkFields.length === 0) {
     showPanels('error')
     errorBody.textContent = 'Deleting database rows requires at least one primary key column on the table.'
     setStatus('Cannot delete without primary key')
     return
+  for (const key of state.selectedRowKeys) {
+    const isInsert = tableEntry.inserts.some(i => i.clientId === key)
+    if (!isInsert && pkFields.length === 0) {
+      showPanels('error')
+      errorBody.textContent = 'Deleting database rows requires at least one primary key column on the table.'
+      setStatus('Cannot delete without primary key')
+      return
+    }
   }
 
   const insertedIndicesToRemove = []
@@ -703,11 +846,25 @@ function handleDeleteSelected() {
     if (idx < 0) {
       const insertIdx = -1 - idx
       insertedIndicesToRemove.push(insertIdx)
+  for (const key of state.selectedRowKeys) {
+    const insertIdx = tableEntry.inserts.findIndex(i => i.clientId === key)
+    if (insertIdx !== -1) {
+      tableEntry.inserts.splice(insertIdx, 1)
     } else {
       if (stagedChanges.deletes.has(idx)) {
         stagedChanges.deletes.delete(idx)
+      if (tableEntry.deletes.has(key)) {
+        tableEntry.deletes.delete(key)
       } else {
         stagedChanges.deletes.add(idx)
+        const row = state.resultRows.find((r, i) => {
+          const pk = getRowPkKey(tableName, r)
+          return (pk && pk === key) || ('idx_' + i) === key
+        })
+        if (row) {
+          const pkWhere = getRowPkWhere(tableName, row)
+          tableEntry.deletes.set(key, { pkWhere, row })
+        }
       }
     }
   }
@@ -720,20 +877,29 @@ function handleDeleteSelected() {
   }
 
   state.selectedRowIndices = []
+  cleanupTableStaged(tableName)
+  state.selectedRowKeys.clear()
   updateStagedButtons()
+  syncSidebarStagedBadges()
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
 function handleDiscardChanges() {
   clearStagedChanges()
   state.selectedRowIndices = []
+  clearAllStagedChanges()
+  state.selectedRowKeys.clear()
+  state.cellEditDraft = null
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
   setStatus('Staged changes discarded')
+  setStatus('All staged changes discarded')
 }
 
 async function handleCommitChanges() {
   const count = getStagedCount()
   if (count === 0 || !state.activeTable) return
+  const globalCount = getGlobalStagedCount()
+  if (globalCount === 0) return
 
   const pkFields = getPrimaryKeyColumns(state.activeTable)
   if ((stagedChanges.updates.size > 0 || stagedChanges.deletes.size > 0) && pkFields.length === 0) {
@@ -741,10 +907,21 @@ async function handleCommitChanges() {
     errorBody.textContent = 'Commit failed: Updating or deleting rows requires at least one primary key column on the table.'
     setStatus('Primary key required for updates/deletes')
     return
+  for (const [tableName, entry] of stagedChanges.entries()) {
+    if (entry.updates.size > 0 || entry.deletes.size > 0) {
+      const pkFields = getPrimaryKeyColumns(tableName)
+      if (pkFields.length === 0) {
+        showPanels('error')
+        errorBody.textContent = `Commit failed: Table "${tableName}" has updates or deletes but lacks a primary key.`
+        setStatus(`Primary key required for table ${tableName}`)
+        return
+      }
+    }
   }
 
   const tableRef = quoteTableIdentifier(state.activeTable)
   const statements = []
+  let affectedTablesCount = 0
 
   // 1. DELETES
   for (const rowIndex of stagedChanges.deletes) {
@@ -756,6 +933,9 @@ async function handleCommitChanges() {
     })
     statements.push(`DELETE FROM ${tableRef} WHERE ${whereClauses.join(' AND ')};`)
   }
+  for (const [tableName, entry] of stagedChanges.entries()) {
+    const tableRef = quoteTableIdentifier(tableName)
+    let tableHasChanges = false
 
   // 2. INSERTS
   for (const row of stagedChanges.inserts) {
@@ -763,6 +943,16 @@ async function handleCommitChanges() {
       const val = row[f]
       return val !== undefined && val !== null && String(val).trim() !== ''
     })
+    // 1. DELETES
+    for (const [, delData] of entry.deletes) {
+      const { pkWhere } = delData
+      if (!pkWhere) continue
+      const whereClauses = Object.entries(pkWhere).map(([col, val]) => {
+        return `${quoteColumnIdentifier(col)} = ${toSqlLiteral(val)}`
+      })
+      statements.push(`DELETE FROM ${tableRef} WHERE ${whereClauses.join(' AND ')};`)
+      tableHasChanges = true
+    }
 
     if (filledFields.length === 0) {
       statements.push(`INSERT INTO ${tableRef} DEFAULT VALUES;`)
@@ -770,6 +960,21 @@ async function handleCommitChanges() {
       const colsSql = filledFields.map(quoteColumnIdentifier).join(', ')
       const valsSql = filledFields.map(f => toSqlInputLiteral(row[f])).join(', ')
       statements.push(`INSERT INTO ${tableRef} (${colsSql}) VALUES (${valsSql});`)
+    // 2. INSERTS
+    for (const insert of entry.inserts) {
+      const filledFields = Object.keys(insert.values).filter(f => {
+        const val = insert.values[f]
+        return val !== undefined && val !== null && String(val).trim() !== ''
+      })
+
+      if (filledFields.length === 0) {
+        statements.push(`INSERT INTO ${tableRef} DEFAULT VALUES;`)
+      } else {
+        const colsSql = filledFields.map(quoteColumnIdentifier).join(', ')
+        const valsSql = filledFields.map(f => toSqlInputLiteral(insert.values[f])).join(', ')
+        statements.push(`INSERT INTO ${tableRef} (${colsSql}) VALUES (${valsSql});`)
+      }
+      tableHasChanges = true
     }
   }
 
@@ -778,10 +983,26 @@ async function handleCommitChanges() {
     if (stagedChanges.deletes.has(rowIndex)) continue
     const row = state.resultRows[rowIndex]
     if (!row || colMap.size === 0) continue
+    // 3. UPDATES
+    for (const [pkKey, updateData] of entry.updates) {
+      if (entry.deletes.has(pkKey)) continue
+      const { pkWhere, changes } = updateData
+      if (!changes || changes.size === 0 || !pkWhere) continue
 
     const setClauses = []
     for (const [field, newVal] of colMap) {
       setClauses.push(`${quoteColumnIdentifier(field)} = ${toSqlInputLiteral(newVal)}`)
+      const setClauses = []
+      for (const [field, newVal] of changes) {
+        setClauses.push(`${quoteColumnIdentifier(field)} = ${toSqlInputLiteral(newVal)}`)
+      }
+
+      const whereClauses = Object.entries(pkWhere).map(([col, val]) => {
+        return `${quoteColumnIdentifier(col)} = ${toSqlLiteral(val)}`
+      })
+
+      statements.push(`UPDATE ${tableRef} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`)
+      tableHasChanges = true
     }
 
     const whereClauses = pkFields.map(pk => {
@@ -790,16 +1011,21 @@ async function handleCommitChanges() {
     })
 
     statements.push(`UPDATE ${tableRef} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`)
+    if (tableHasChanges) {
+      affectedTablesCount++
+    }
   }
 
   if (statements.length === 0) {
     clearStagedChanges()
+    clearAllStagedChanges()
     return
   }
 
   commitChangesBtn.disabled = true
   discardChangesBtn.disabled = true
   setStatus(`Applying ${statements.length} changes…`)
+  setStatus(`Applying ${statements.length} changes across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}…`)
 
   try {
     const result = await window.db.applyChanges(statements)
@@ -812,10 +1038,17 @@ async function handleCommitChanges() {
 
     clearStagedChanges()
     setStatus(`Successfully committed ${result.count} changes`)
+    clearAllStagedChanges()
+    setStatus(`Successfully committed ${result.count} change${result.count !== 1 ? 's' : ''} across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}`)
 
     const sql = `SELECT * FROM ${quoteTableIdentifier(state.activeTable)};`
     queryInput.value = sql
     await runQuery(sql)
+    if (state.activeTable) {
+      const sql = `SELECT * FROM ${quoteTableIdentifier(state.activeTable)};`
+      queryInput.value = sql
+      await runQuery(sql)
+    }
   } catch (err) {
     showPanels('error')
     errorBody.textContent = `Commit error: ${err.message}`
@@ -824,21 +1057,32 @@ async function handleCommitChanges() {
     commitChangesBtn.disabled = false
     discardChangesBtn.disabled = false
     updateStagedButtons()
+    syncSidebarStagedBadges()
   }
 }
 
 function startCellEdit(rowIndex, field) {
+function startCellEdit(rowKey, isInsert, field) {
   if (!state.activeTable) return
+  const tableName = state.activeTable
+  const tableEntry = stagedChanges.get(tableName)
 
   if (rowIndex < 0) {
     const insertIdx = -1 - rowIndex
     const row = stagedChanges.inserts[insertIdx]
     if (!row || !(field in row)) return
     const originalValue = row[field]
+  if (isInsert) {
+    const insert = tableEntry?.inserts.find(i => i.clientId === rowKey)
+    if (!insert || !(field in insert.values)) return
+    const originalValue = insert.values[field] ?? ''
     state.cellEditDraft = {
       rowIndex,
+      rowKey,
+      isInsert: true,
       field,
       value: originalValue === null || originalValue === undefined ? '' : String(originalValue),
+      value: originalValue,
       originalValue,
     }
     renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
@@ -846,14 +1090,29 @@ function startCellEdit(rowIndex, field) {
   }
 
   const row = state.resultRows[rowIndex]
+  const pkFields = getPrimaryKeyColumns(tableName)
+  if (pkFields.length === 0) {
+    showPanels('error')
+    errorBody.textContent = 'Inline edit requires at least one primary key column on the table.'
+    setStatus('Cannot edit without primary key')
+    return
+  }
+
+  const row = state.resultRows.find((r, i) => {
+    const pk = getRowPkKey(tableName, r)
+    return (pk && pk === rowKey) || ('idx_' + i) === rowKey
+  })
   if (!row || !(field in row)) return
 
   const stagedVal = stagedChanges.updates.get(rowIndex)?.get(field)
+  const stagedVal = tableEntry?.updates.get(rowKey)?.changes.get(field)
   const currentValue = stagedVal !== undefined ? stagedVal : row[field]
   const originalValue = row[field]
 
   state.cellEditDraft = {
     rowIndex,
+    rowKey,
+    isInsert: false,
     field,
     value: currentValue === null || currentValue === undefined ? '' : String(currentValue),
     originalValue,
@@ -872,13 +1131,21 @@ function saveCellEdit() {
   if (!state.cellEditDraft || !state.activeTable) return
 
   const { rowIndex, field, value, originalValue } = state.cellEditDraft
+  const { rowKey, isInsert, field, value, originalValue } = state.cellEditDraft
+  const tableName = state.activeTable
   state.cellEditDraft = null
 
   if (rowIndex < 0) {
     const insertIdx = -1 - rowIndex
     if (stagedChanges.inserts[insertIdx]) {
       stagedChanges.inserts[insertIdx][field] = value
+  if (isInsert) {
+    const tableEntry = getTableStaged(tableName)
+    const insert = tableEntry.inserts.find(i => i.clientId === rowKey)
+    if (insert) {
+      insert.values[field] = value
       updateStagedButtons()
+      syncSidebarStagedBadges()
       renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
     }
     return
@@ -886,6 +1153,7 @@ function saveCellEdit() {
 
   const normalizedOriginal = originalValue === null || originalValue === undefined ? '' : String(originalValue)
   const pkFields = getPrimaryKeyColumns(state.activeTable)
+  const pkFields = getPrimaryKeyColumns(tableName)
 
   if (value === normalizedOriginal) {
     if (stagedChanges.updates.has(rowIndex)) {
@@ -893,9 +1161,18 @@ function saveCellEdit() {
       rowMap.delete(field)
       if (rowMap.size === 0) {
         stagedChanges.updates.delete(rowIndex)
+    if (stagedChanges.has(tableName)) {
+      const tableEntry = stagedChanges.get(tableName)
+      if (tableEntry.updates.has(rowKey)) {
+        tableEntry.updates.get(rowKey).changes.delete(field)
+        if (tableEntry.updates.get(rowKey).changes.size === 0) {
+          tableEntry.updates.delete(rowKey)
+        }
+        cleanupTableStaged(tableName)
       }
     }
     updateStagedButtons()
+    syncSidebarStagedBadges()
     renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
     return
   }
@@ -910,10 +1187,25 @@ function saveCellEdit() {
 
   if (!stagedChanges.updates.has(rowIndex)) {
     stagedChanges.updates.set(rowIndex, new Map())
+  const tableEntry = getTableStaged(tableName)
+  if (!tableEntry.updates.has(rowKey)) {
+    const row = state.resultRows.find((r, i) => {
+      const pk = getRowPkKey(tableName, r)
+      return (pk && pk === rowKey) || ('idx_' + i) === rowKey
+    })
+    const pkWhere = getRowPkWhere(tableName, row)
+    tableEntry.updates.set(rowKey, {
+      pkWhere,
+      changes: new Map(),
+      originalValues: row ? { ...row } : {},
+    })
   }
   stagedChanges.updates.get(rowIndex).set(field, value)
 
+  tableEntry.updates.get(rowKey).changes.set(field, value)
+
   updateStagedButtons()
+  syncSidebarStagedBadges()
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
@@ -964,6 +1256,8 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   if (state.cellEditDraft && state.cellEditDraft.rowIndex >= 0 && !rows[state.cellEditDraft.rowIndex]) {
     state.cellEditDraft = null
   }
+  const tableName = state.activeTable
+  const tableEntry = tableName ? stagedChanges.get(tableName) : null
 
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
 
@@ -971,11 +1265,43 @@ function renderResults(fields, rows, ms, rightLabel = null) {
     const virtIndex = -1 - insertIdx
     const isEditing = state.cellEditDraft && state.cellEditDraft.rowIndex === virtIndex
     const isSelected = state.selectedRowIndices.includes(virtIndex)
+  let insertedRowsHtml = ''
+  if (tableEntry && tableEntry.inserts.length > 0) {
+    insertedRowsHtml = tableEntry.inserts.map(insert => {
+      const isEditing = state.cellEditDraft && state.cellEditDraft.rowKey === insert.clientId
+      const isSelected = state.selectedRowKeys.has(insert.clientId)
 
     let rowClasses = 'result-row row-inserted'
+      let rowClasses = 'result-row row-inserted'
+      if (isSelected) rowClasses += ' selected'
+
+      return `<tr class="${rowClasses}" data-row-key="${escapeHtml(insert.clientId)}" data-is-insert="true">` + fields.map(f => {
+        if (isEditing && state.cellEditDraft.field === f) {
+          return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
+        }
+        const val = insert.values[f]
+        const displayVal = (val === '' || val === null || val === undefined)
+          ? '<span class="null-value">[NEW]</span>'
+          : escapeHtml(String(val))
+        return `<td class="result-cell" data-field="${escapeHtml(f)}">${displayVal}</td>`
+      }).join('') + '</tr>'
+    }).join('')
+  }
+
+  const dataRowsHtml = rows.map((row, index) => {
+    const pkKey = tableName ? getRowPkKey(tableName, row) : null
+    const rowKey = pkKey || ('idx_' + index)
+    const isEditing = state.cellEditDraft && state.cellEditDraft.rowKey === rowKey
+    const isSelected = state.selectedRowKeys.has(rowKey)
+    const isDeleted = Boolean(tableEntry && pkKey && tableEntry.deletes.has(pkKey))
+    const rowUpdates = tableEntry && pkKey ? tableEntry.updates.get(pkKey) : null
+
+    let rowClasses = 'result-row'
     if (isSelected) rowClasses += ' selected'
+    if (isDeleted) rowClasses += ' row-deleted'
 
     return `<tr class="${rowClasses}" data-row-index="${virtIndex}">` + fields.map(f => {
+    return `<tr class="${rowClasses}" data-row-key="${escapeHtml(rowKey)}" data-row-index="${index}" data-is-insert="false">` + fields.map(f => {
       if (isEditing && state.cellEditDraft.field === f) {
         return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
       }
@@ -984,6 +1310,23 @@ function renderResults(fields, rows, ms, rightLabel = null) {
         ? '<span class="null-value">[NEW]</span>'
         : escapeHtml(String(val))
       return `<td class="result-cell" data-field="${escapeHtml(f)}">${displayVal}</td>`
+
+      const isDirty = Boolean(rowUpdates && rowUpdates.changes && rowUpdates.changes.has(f))
+      const val = isDirty ? rowUpdates.changes.get(f) : row[f]
+      const origVal = row[f]
+
+      let cellClass = 'result-cell'
+      if (isDirty) cellClass += ' cell-dirty'
+
+      let titleAttr = ''
+      if (isDirty) {
+        titleAttr = ` title="Original: ${origVal === null || origVal === undefined ? 'NULL' : escapeHtml(String(origVal))}"`
+      }
+
+      if (val === null || val === undefined) {
+        return `<td class="${cellClass}" data-field="${escapeHtml(f)}"${titleAttr}><span class="null-value">NULL</span></td>`
+      }
+      return `<td class="${cellClass}" data-field="${escapeHtml(f)}"${titleAttr}>${escapeHtml(String(val))}</td>`
     }).join('') + '</tr>'
   }).join('')
 
@@ -994,6 +1337,8 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   resultsBody.innerHTML = insertedRowsHtml + dataRowsHtml
 
   if (stagedChanges.inserts.length === 0 && rows.length === 0) {
+  const totalInserts = tableEntry ? tableEntry.inserts.length : 0
+  if (totalInserts === 0 && rows.length === 0) {
     const colSpan = Math.max(fields.length, 1)
     resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
   }
@@ -1001,6 +1346,7 @@ function renderResults(fields, rows, ms, rightLabel = null) {
   updateFooterStatus()
   bindCellEditInput()
   updateStagedButtons()
+  syncSidebarStagedBadges()
 }
 
 function appendResults(newRows) {
@@ -1010,6 +1356,45 @@ function appendResults(newRows) {
   const newRowsHtml = newRows.map((row, i) =>
     renderRowHtml(row, startIndex + i, state.resultFields)
   ).join('')
+  const tableName = state.activeTable
+  const tableEntry = tableName ? stagedChanges.get(tableName) : null
+
+  const newRowsHtml = newRows.map((row, i) => {
+    const index = startIndex + i
+    const pkKey = tableName ? getRowPkKey(tableName, row) : null
+    const rowKey = pkKey || ('idx_' + index)
+    const isEditing = state.cellEditDraft && state.cellEditDraft.rowKey === rowKey
+    const isSelected = state.selectedRowKeys.has(rowKey)
+    const isDeleted = Boolean(tableEntry && pkKey && tableEntry.deletes.has(pkKey))
+    const rowUpdates = tableEntry && pkKey ? tableEntry.updates.get(pkKey) : null
+
+    let rowClasses = 'result-row'
+    if (isSelected) rowClasses += ' selected'
+    if (isDeleted) rowClasses += ' row-deleted'
+
+    return `<tr class="${rowClasses}" data-row-key="${escapeHtml(rowKey)}" data-row-index="${index}" data-is-insert="false">` + state.resultFields.map(f => {
+      if (isEditing && state.cellEditDraft.field === f) {
+        return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
+      }
+
+      const isDirty = Boolean(rowUpdates && rowUpdates.changes && rowUpdates.changes.has(f))
+      const val = isDirty ? rowUpdates.changes.get(f) : row[f]
+      const origVal = row[f]
+
+      let cellClass = 'result-cell'
+      if (isDirty) cellClass += ' cell-dirty'
+
+      let titleAttr = ''
+      if (isDirty) {
+        titleAttr = ` title="Original: ${origVal === null || origVal === undefined ? 'NULL' : escapeHtml(String(origVal))}"`
+      }
+
+      if (val === null || val === undefined) {
+        return `<td class="${cellClass}" data-field="${escapeHtml(f)}"${titleAttr}><span class="null-value">NULL</span></td>`
+      }
+      return `<td class="${cellClass}" data-field="${escapeHtml(f)}"${titleAttr}>${escapeHtml(String(val))}</td>`
+    }).join('') + '</tr>'
+  }).join('')
 
   resultsBody.insertAdjacentHTML('beforeend', newRowsHtml)
   updateFooterStatus()
@@ -1106,22 +1491,29 @@ resultsBody.addEventListener('click', (e) => {
 
   const rowIndex = Number(rowEl.dataset.rowIndex)
   if (!Number.isInteger(rowIndex)) return
+  const rowKey = rowEl.dataset.rowKey
+  if (!rowKey) return
 
   const multiSelect = e.ctrlKey || e.metaKey
 
   if (multiSelect) {
     if (state.selectedRowIndices.includes(rowIndex)) {
       state.selectedRowIndices = state.selectedRowIndices.filter(i => i !== rowIndex)
+    if (state.selectedRowKeys.has(rowKey)) {
+      state.selectedRowKeys.delete(rowKey)
     } else {
       state.selectedRowIndices.push(rowIndex)
+      state.selectedRowKeys.add(rowKey)
     }
   } else {
     state.selectedRowIndices = [rowIndex]
+    state.selectedRowKeys = new Set([rowKey])
   }
 
   resultsBody.querySelectorAll('.result-row').forEach(el => {
     const idx = Number(el.dataset.rowIndex)
     el.classList.toggle('selected', state.selectedRowIndices.includes(idx))
+    el.classList.toggle('selected', state.selectedRowKeys.has(el.dataset.rowKey))
   })
 
   updateStagedButtons()
@@ -1135,12 +1527,16 @@ resultsBody.addEventListener('dblclick', (e) => {
   if (!rowEl) return
 
   const rowIndex = Number(rowEl.dataset.rowIndex)
+  const rowKey = rowEl.dataset.rowKey
+  const isInsert = rowEl.dataset.isInsert === 'true'
   const field = cellEl.dataset.field
   if (!Number.isInteger(rowIndex) || !field) return
+  if (!rowKey || !field) return
 
   e.preventDefault()
   e.stopPropagation()
   startCellEdit(rowIndex, field)
+  startCellEdit(rowKey, isInsert, field)
 })
 
 function bindCellEditInput() {

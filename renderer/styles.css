@@ -407,8 +407,31 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .schema-table-header:hover { background: var(--surface3); }
 .schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; }
+.schema-table-header .tbl-icon { color: var(--accent); font-size: 11px; flex-shrink: 0; }
+.schema-table-header .tbl-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .schema-table.active .schema-table-header { background: rgba(74,222,128,0.08); }
 .schema-table.active .schema-table-header:hover { background: rgba(74,222,128,0.12); }
+
+.tbl-staged-badge {
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.tbl-staged-badge.hidden {
+  display: none;
+}
 
 .tbl-toggle-btn {
   margin-left: auto;
@@ -425,6 +448,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   justify-content: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .tbl-toggle-btn:hover {
