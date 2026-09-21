@@ -598,9 +598,19 @@ function selectTable(tableName) {
   state.cellEditDraft = null
   updateStagedButtons()
   syncSidebarStagedBadges()
-  const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)};`
+  const sql = buildDefaultTableQuery(tableName)
   queryInput.value = sql
   runQuery(sql)
+}
+
+function buildDefaultTableQuery(tableName) {
+  const tableRef = quoteTableIdentifier(tableName)
+  const pkCols = getPrimaryKeyColumns(tableName)
+  if (pkCols.length > 0) {
+    const orderCols = pkCols.map(col => `${quoteColumnIdentifier(col.column_name)} ASC`).join(', ')
+    return `SELECT * FROM ${tableRef} ORDER BY ${orderCols};`
+  }
+  return `SELECT * FROM ${tableRef};`
 }
 
 function canPaginateQuery(sql) {
@@ -1107,7 +1117,7 @@ async function handleCommitChanges() {
     setStatus(`Successfully committed ${result.count} change${result.count !== 1 ? 's' : ''} across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}`)
 
     if (state.activeTable) {
-      const sql = `SELECT * FROM ${quoteTableIdentifier(state.activeTable)};`
+      const sql = buildDefaultTableQuery(state.activeTable)
       queryInput.value = sql
       await runQuery(sql)
     }
