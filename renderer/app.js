@@ -61,9 +61,6 @@ const resultsBody       = document.getElementById('resultsBody')
 const resultsFooter     = document.getElementById('resultsFooter')
 const addRowBtn         = document.getElementById('addRowBtn')
 const removeEntryBtn    = document.getElementById('removeEntryBtn')
-const stagedSep         = document.getElementById('stagedSep')
-const discardChangesBtn = document.getElementById('discardChangesBtn')
-const commitChangesBtn  = document.getElementById('commitChangesBtn')
 
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
@@ -644,8 +641,6 @@ queryInput.addEventListener('keydown', (e) => {
 
 addRowBtn.addEventListener('click', handleAddRow)
 removeEntryBtn.addEventListener('click', handleDeleteSelected)
-discardChangesBtn.addEventListener('click', handleDiscardChanges)
-commitChangesBtn.addEventListener('click', handleCommitChanges)
 topbarCommitBtn.addEventListener('click', openCommitModal)
 commitModalClose.addEventListener('click', closeCommitModal)
 commitModalCancelBtn.addEventListener('click', closeCommitModal)
@@ -667,10 +662,6 @@ if (resultsScroll) {
 updateStagedButtons()
 
 function handleGlobalShortcuts(e) {
-  if (e.key === 'Escape' && !errorPanel.classList.contains('hidden')) {
-    e.preventDefault()
-    returnToSchemaOverview()
-    return
   if (e.key === 'Escape') {
     if (!commitModalOverlay.classList.contains('hidden')) {
       e.preventDefault()
@@ -772,17 +763,9 @@ function updateStagedButtons() {
 
   // Topbar commit review button
   if (totalCount > 0) {
-    stagedSep.classList.remove('hidden')
-    discardChangesBtn.classList.remove('hidden')
-    commitChangesBtn.classList.remove('hidden')
-    commitChangesBtn.textContent = `Commit (${totalCount})`
     topbarCommitBtn.classList.remove('hidden')
     topbarCommitText.textContent = `Changes (${totalCount})`
   } else {
-    stagedSep.classList.add('hidden')
-    discardChangesBtn.classList.add('hidden')
-    commitChangesBtn.classList.add('hidden')
-    commitChangesBtn.textContent = 'Commit (0)'
     topbarCommitBtn.classList.add('hidden')
     topbarCommitText.textContent = 'Changes (0)'
     closeCommitModal()
@@ -790,7 +773,6 @@ function updateStagedButtons() {
 }
 
 /* ══════════════════════════════════════════
-   6. STAGED MUTATIONS (INSERTS, UPDATES, DELETES)
    6. COMBINED COMMIT MODAL & REVIEW VIEW
 ══════════════════════════════════════════ */
 
@@ -1094,19 +1076,6 @@ function handleDiscardChanges() {
 }
 
 async function handleCommitChanges() {
-  const globalCount = getGlobalStagedCount()
-  if (globalCount === 0) return
-
-  for (const [tableName, entry] of stagedChanges.entries()) {
-    if (entry.updates.size > 0 || entry.deletes.size > 0) {
-      const pkFields = getPrimaryKeyColumns(tableName)
-      if (pkFields.length === 0) {
-        showPanels('error')
-        errorBody.textContent = `Commit failed: Table "${tableName}" has updates or deletes but lacks a primary key.`
-        setStatus(`Primary key required for table ${tableName}`)
-        return
-      }
-    }
   const { statements, affectedTablesCount, error } = buildCommitStatements()
   if (error) {
     showPanels('error')
@@ -1114,74 +1083,12 @@ async function handleCommitChanges() {
     setStatus('Commit failed')
     return
   }
-
-  const statements = []
-  let affectedTablesCount = 0
-
-  for (const [tableName, entry] of stagedChanges.entries()) {
-    const tableRef = quoteTableIdentifier(tableName)
-    let tableHasChanges = false
-
-    // 1. DELETES
-    for (const [, delData] of entry.deletes) {
-      const { pkWhere } = delData
-      if (!pkWhere) continue
-      const whereClauses = Object.entries(pkWhere).map(([col, val]) => {
-        return `${quoteColumnIdentifier(col)} = ${toSqlLiteral(val)}`
-      })
-      statements.push(`DELETE FROM ${tableRef} WHERE ${whereClauses.join(' AND ')};`)
-      tableHasChanges = true
-    }
-
-    // 2. INSERTS
-    for (const insert of entry.inserts) {
-      const filledFields = Object.keys(insert.values).filter(f => {
-        const val = insert.values[f]
-        return val !== undefined && val !== null && String(val).trim() !== ''
-      })
-
-      if (filledFields.length === 0) {
-        statements.push(`INSERT INTO ${tableRef} DEFAULT VALUES;`)
-      } else {
-        const colsSql = filledFields.map(quoteColumnIdentifier).join(', ')
-        const valsSql = filledFields.map(f => toSqlInputLiteral(insert.values[f])).join(', ')
-        statements.push(`INSERT INTO ${tableRef} (${colsSql}) VALUES (${valsSql});`)
-      }
-      tableHasChanges = true
-    }
-
-    // 3. UPDATES
-    for (const [pkKey, updateData] of entry.updates) {
-      if (entry.deletes.has(pkKey)) continue
-      const { pkWhere, changes } = updateData
-      if (!changes || changes.size === 0 || !pkWhere) continue
-
-      const setClauses = []
-      for (const [field, newVal] of changes) {
-        setClauses.push(`${quoteColumnIdentifier(field)} = ${toSqlInputLiteral(newVal)}`)
-      }
-
-      const whereClauses = Object.entries(pkWhere).map(([col, val]) => {
-        return `${quoteColumnIdentifier(col)} = ${toSqlLiteral(val)}`
-      })
-
-      statements.push(`UPDATE ${tableRef} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`)
-      tableHasChanges = true
-    }
-
-    if (tableHasChanges) {
-      affectedTablesCount++
-    }
-  }
-
   if (statements.length === 0) {
     clearAllStagedChanges()
     closeCommitModal()
     return
   }
 
-  commitChangesBtn.disabled = true
-  discardChangesBtn.disabled = true
   commitModalApplyBtn.disabled = true
   commitModalDiscardBtn.disabled = true
   setStatus(`Applying ${statements.length} changes across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}…`)
@@ -1209,8 +1116,6 @@ async function handleCommitChanges() {
     errorBody.textContent = `Commit error: ${err.message}`
     setStatus('Commit failed')
   } finally {
-    commitChangesBtn.disabled = false
-    discardChangesBtn.disabled = false
     commitModalApplyBtn.disabled = false
     commitModalDiscardBtn.disabled = false
     updateStagedButtons()
@@ -1343,7 +1248,6 @@ function saveCellEdit() {
 
 
 /* ══════════════════════════════════════════
-   7. RESULTS RENDERER & DYNAMIC WINDOWING
    8. RESULTS RENDERER & DYNAMIC WINDOWING
 ══════════════════════════════════════════ */
 
@@ -1682,7 +1586,6 @@ function showPanels(mode) {
 }
 
 /* ══════════════════════════════════════════
-   8. UTILITY
    9. UTILITY
 ══════════════════════════════════════════ */
 
