@@ -14,6 +14,8 @@ const dbDot          = document.getElementById('dbDot')
 const dbLabel        = document.getElementById('dbLabel')
 const refreshBtn     = document.getElementById('refreshBtn')
 const connectBtn     = document.getElementById('connectBtn')
+const topbarCommitBtn = document.getElementById('topbarCommitBtn')
+const topbarCommitText = document.getElementById('topbarCommitText')
 
 const modalOverlay   = document.getElementById('modalOverlay')
 const modalClose     = document.getElementById('modalClose')
@@ -32,6 +34,14 @@ const connPreview    = document.getElementById('connPreview')
 const pasteConnBtn   = document.getElementById('pasteConnBtn')
 const rawConnGroup   = document.getElementById('rawConnGroup')
 const rawConnInput   = document.getElementById('rawConnInput')
+
+const commitModalOverlay    = document.getElementById('commitModalOverlay')
+const commitModalClose      = document.getElementById('commitModalClose')
+const commitModalCancelBtn  = document.getElementById('commitModalCancelBtn')
+const commitModalDiscardBtn = document.getElementById('commitModalDiscardBtn')
+const commitModalApplyBtn   = document.getElementById('commitModalApplyBtn')
+const commitModalBadge      = document.getElementById('commitModalBadge')
+const commitModalBody       = document.getElementById('commitModalBody')
 
 const schemaList     = document.getElementById('schemaList')
 const queryInput     = document.getElementById('queryInput')
@@ -636,6 +646,18 @@ addRowBtn.addEventListener('click', handleAddRow)
 removeEntryBtn.addEventListener('click', handleDeleteSelected)
 discardChangesBtn.addEventListener('click', handleDiscardChanges)
 commitChangesBtn.addEventListener('click', handleCommitChanges)
+topbarCommitBtn.addEventListener('click', openCommitModal)
+commitModalClose.addEventListener('click', closeCommitModal)
+commitModalCancelBtn.addEventListener('click', closeCommitModal)
+commitModalDiscardBtn.addEventListener('click', () => {
+  handleDiscardChanges()
+  closeCommitModal()
+})
+commitModalApplyBtn.addEventListener('click', handleCommitChanges)
+commitModalOverlay.addEventListener('click', (e) => {
+  if (e.target === commitModalOverlay) closeCommitModal()
+})
+
 errorReturnBtn.addEventListener('click', returnToSchemaOverview)
 document.addEventListener('keydown', handleGlobalShortcuts)
 
@@ -649,6 +671,17 @@ function handleGlobalShortcuts(e) {
     e.preventDefault()
     returnToSchemaOverview()
     return
+  if (e.key === 'Escape') {
+    if (!commitModalOverlay.classList.contains('hidden')) {
+      e.preventDefault()
+      closeCommitModal()
+      return
+    }
+    if (!errorPanel.classList.contains('hidden')) {
+      e.preventDefault()
+      returnToSchemaOverview()
+      return
+    }
   }
 }
 
@@ -737,21 +770,253 @@ function updateStagedButtons() {
   }
   removeEntryBtn.disabled = !canDelete
 
+  // Topbar commit review button
   if (totalCount > 0) {
     stagedSep.classList.remove('hidden')
     discardChangesBtn.classList.remove('hidden')
     commitChangesBtn.classList.remove('hidden')
     commitChangesBtn.textContent = `Commit (${totalCount})`
+    topbarCommitBtn.classList.remove('hidden')
+    topbarCommitText.textContent = `Changes (${totalCount})`
   } else {
     stagedSep.classList.add('hidden')
     discardChangesBtn.classList.add('hidden')
     commitChangesBtn.classList.add('hidden')
     commitChangesBtn.textContent = 'Commit (0)'
+    topbarCommitBtn.classList.add('hidden')
+    topbarCommitText.textContent = 'Changes (0)'
+    closeCommitModal()
   }
 }
 
 /* ══════════════════════════════════════════
    6. STAGED MUTATIONS (INSERTS, UPDATES, DELETES)
+   6. COMBINED COMMIT MODAL & REVIEW VIEW
+══════════════════════════════════════════ */
+
+function openCommitModal() {
+  if (getGlobalStagedCount() === 0) return
+  renderCommitModal()
+  commitModalOverlay.classList.remove('hidden')
+}
+
+function closeCommitModal() {
+  commitModalOverlay.classList.add('hidden')
+}
+
+function buildCommitStatements() {
+  const statements = []
+  let affectedTablesCount = 0
+
+  for (const [tableName, entry] of stagedChanges.entries()) {
+    if (entry.updates.size > 0 || entry.deletes.size > 0) {
+      const pkFields = getPrimaryKeyColumns(tableName)
+      if (pkFields.length === 0) {
+        return {
+          error: `Table "${tableName}" has updates or deletes but lacks a primary key.`,
+          statements: [],
+          affectedTablesCount: 0,
+        }
+      }
+    }
+
+    const tableRef = quoteTableIdentifier(tableName)
+    let tableHasChanges = false
+
+    // 1. DELETES
+    for (const [, delData] of entry.deletes) {
+      const { pkWhere } = delData
+      if (!pkWhere) continue
+      const whereClauses = Object.entries(pkWhere).map(([col, val]) => {
+        return `${quoteColumnIdentifier(col)} = ${toSqlLiteral(val)}`
+      })
+      statements.push(`DELETE FROM ${tableRef} WHERE ${whereClauses.join(' AND ')};`)
+      tableHasChanges = true
+    }
+
+    // 2. INSERTS
+    for (const insert of entry.inserts) {
+      const filledFields = Object.keys(insert.values).filter(f => {
+        const val = insert.values[f]
+        return val !== undefined && val !== null && String(val).trim() !== ''
+      })
+
+      if (filledFields.length === 0) {
+        statements.push(`INSERT INTO ${tableRef} DEFAULT VALUES;`)
+      } else {
+        const colsSql = filledFields.map(quoteColumnIdentifier).join(', ')
+        const valsSql = filledFields.map(f => toSqlInputLiteral(insert.values[f])).join(', ')
+        statements.push(`INSERT INTO ${tableRef} (${colsSql}) VALUES (${valsSql});`)
+      }
+      tableHasChanges = true
+    }
+
+    // 3. UPDATES
+    for (const [pkKey, updateData] of entry.updates) {
+      if (entry.deletes.has(pkKey)) continue
+      const { pkWhere, changes } = updateData
+      if (!changes || changes.size === 0 || !pkWhere) continue
+
+      const setClauses = []
+      for (const [field, newVal] of changes) {
+        setClauses.push(`${quoteColumnIdentifier(field)} = ${toSqlInputLiteral(newVal)}`)
+      }
+
+      const whereClauses = Object.entries(pkWhere).map(([col, val]) => {
+        return `${quoteColumnIdentifier(col)} = ${toSqlLiteral(val)}`
+      })
+
+      statements.push(`UPDATE ${tableRef} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`)
+      tableHasChanges = true
+    }
+
+    if (tableHasChanges) {
+      affectedTablesCount++
+    }
+  }
+
+  return { statements, affectedTablesCount, error: null }
+}
+
+function renderCommitModal() {
+  const totalCount = getGlobalStagedCount()
+  const { statements, affectedTablesCount, error } = buildCommitStatements()
+
+  commitModalBadge.textContent = `${totalCount} change${totalCount !== 1 ? 's' : ''} across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}`
+  commitModalApplyBtn.textContent = `Commit (${totalCount}) Changes →`
+  commitModalApplyBtn.disabled = Boolean(error) || totalCount === 0
+
+  let html = ''
+
+  if (error) {
+    html += `<div class="modal-error">${escapeHtml(error)}</div>`
+  }
+
+  for (const [tableName, entry] of stagedChanges.entries()) {
+    const tableCount = getTableStagedCount(tableName)
+    if (tableCount === 0) continue
+
+    html += `
+      <div class="commit-table-group">
+        <div class="commit-table-group-header">
+          <span class="commit-table-group-title">
+            <span class="tbl-icon">▤</span>
+            <span>${escapeHtml(tableName)}</span>
+          </span>
+          <span class="tbl-staged-badge">${tableCount}</span>
+        </div>
+        <div class="commit-table-items">
+    `
+
+    // Deletes
+    for (const [, delData] of entry.deletes) {
+      const { pkWhere, row } = delData
+      const pkText = pkWhere
+        ? Object.entries(pkWhere).map(([k, v]) => `${k}=${v}`).join(', ')
+        : 'row'
+      const rowSnippet = row
+        ? Object.entries(row).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' · ')
+        : ''
+
+      html += `
+        <div class="commit-change-item">
+          <span class="change-badge badge-delete">DELETE</span>
+          <div class="commit-change-desc">
+            <strong>Row (${escapeHtml(pkText)})</strong>
+            ${rowSnippet ? `<span class="commit-change-diff" style="margin-left:8px; opacity:0.7;">(${escapeHtml(rowSnippet)})</span>` : ''}
+          </div>
+        </div>
+      `
+    }
+
+    // Inserts
+    for (const insert of entry.inserts) {
+      const populated = Object.entries(insert.values).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+      const valuesText = populated.length > 0
+        ? populated.map(([k, v]) => `<span class="diff-field">${escapeHtml(k)}:</span> <span class="diff-new">${escapeHtml(String(v))}</span>`).join(' · ')
+        : '<span class="null-value">[DEFAULT VALUES]</span>'
+
+      html += `
+        <div class="commit-change-item">
+          <span class="change-badge badge-insert">INSERT</span>
+          <div class="commit-change-desc">
+            <strong>New row:</strong> ${valuesText}
+          </div>
+        </div>
+      `
+    }
+
+    // Updates
+    for (const [pkKey, updateData] of entry.updates) {
+      if (entry.deletes.has(pkKey)) continue
+      const { pkWhere, changes, originalValues } = updateData
+      if (!changes || changes.size === 0) continue
+
+      const pkText = pkWhere
+        ? Object.entries(pkWhere).map(([k, v]) => `${k}=${v}`).join(', ')
+        : 'row'
+
+      const diffItems = []
+      for (const [col, newVal] of changes) {
+        const oldVal = originalValues?.[col]
+        const oldDisplay = (oldVal === null || oldVal === undefined) ? 'NULL' : String(oldVal)
+        const newDisplay = (newVal === null || newVal === undefined || newVal === '') ? 'NULL' : String(newVal)
+        diffItems.push(`
+          <span class="commit-change-diff">
+            <span class="diff-field">${escapeHtml(col)}:</span>
+            <span class="diff-old">${escapeHtml(oldDisplay)}</span>
+            <span class="diff-arrow">→</span>
+            <span class="diff-new">${escapeHtml(newDisplay)}</span>
+          </span>
+        `)
+      }
+
+      html += `
+        <div class="commit-change-item">
+          <span class="change-badge badge-update">UPDATE</span>
+          <div class="commit-change-desc">
+            <strong>Row (${escapeHtml(pkText)}):</strong> ${diffItems.join(' · ')}
+          </div>
+        </div>
+      `
+    }
+
+    html += `
+        </div>
+      </div>
+    `
+  }
+
+  // Transaction SQL Preview Block
+  if (statements.length > 0) {
+    const fullSql = ['BEGIN;', ...statements, 'COMMIT;'].join('\n')
+    html += `
+      <div class="commit-sql-preview">
+        <div class="commit-sql-header" id="commitSqlToggle">
+          <span>Transaction SQL Preview (${statements.length} statements)</span>
+          <span id="commitSqlToggleIcon">▼</span>
+        </div>
+        <pre class="commit-sql-code" id="commitSqlCode">${escapeHtml(fullSql)}</pre>
+      </div>
+    `
+  }
+
+  commitModalBody.innerHTML = html
+
+  const toggleBtn = commitModalBody.querySelector('#commitSqlToggle')
+  const codeBlock = commitModalBody.querySelector('#commitSqlCode')
+  const toggleIcon = commitModalBody.querySelector('#commitSqlToggleIcon')
+  if (toggleBtn && codeBlock) {
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = codeBlock.style.display === 'none'
+      codeBlock.style.display = isHidden ? 'block' : 'none'
+      if (toggleIcon) toggleIcon.textContent = isHidden ? '▼' : '►'
+    })
+  }
+}
+
+/* ══════════════════════════════════════════
+   7. STAGED MUTATIONS (INSERTS, UPDATES, DELETES)
 ══════════════════════════════════════════ */
 
 function handleAddRow() {
@@ -842,6 +1107,12 @@ async function handleCommitChanges() {
         return
       }
     }
+  const { statements, affectedTablesCount, error } = buildCommitStatements()
+  if (error) {
+    showPanels('error')
+    errorBody.textContent = `Commit failed: ${error}`
+    setStatus('Commit failed')
+    return
   }
 
   const statements = []
@@ -905,11 +1176,14 @@ async function handleCommitChanges() {
 
   if (statements.length === 0) {
     clearAllStagedChanges()
+    closeCommitModal()
     return
   }
 
   commitChangesBtn.disabled = true
   discardChangesBtn.disabled = true
+  commitModalApplyBtn.disabled = true
+  commitModalDiscardBtn.disabled = true
   setStatus(`Applying ${statements.length} changes across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}…`)
 
   try {
@@ -922,6 +1196,7 @@ async function handleCommitChanges() {
     }
 
     clearAllStagedChanges()
+    closeCommitModal()
     setStatus(`Successfully committed ${result.count} change${result.count !== 1 ? 's' : ''} across ${affectedTablesCount} table${affectedTablesCount !== 1 ? 's' : ''}`)
 
     if (state.activeTable) {
@@ -936,6 +1211,8 @@ async function handleCommitChanges() {
   } finally {
     commitChangesBtn.disabled = false
     discardChangesBtn.disabled = false
+    commitModalApplyBtn.disabled = false
+    commitModalDiscardBtn.disabled = false
     updateStagedButtons()
     syncSidebarStagedBadges()
   }
@@ -1067,6 +1344,7 @@ function saveCellEdit() {
 
 /* ══════════════════════════════════════════
    7. RESULTS RENDERER & DYNAMIC WINDOWING
+   8. RESULTS RENDERER & DYNAMIC WINDOWING
 ══════════════════════════════════════════ */
 
 function renderResults(fields, rows, ms, rightLabel = null) {
@@ -1405,6 +1683,7 @@ function showPanels(mode) {
 
 /* ══════════════════════════════════════════
    8. UTILITY
+   9. UTILITY
 ══════════════════════════════════════════ */
 
 function setStatus(msg) {

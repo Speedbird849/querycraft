@@ -983,3 +983,213 @@ tbody tr:hover td { background: var(--surface2); }
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
+
+/* ══ TOPBAR COMMIT REVIEW BUTTON ══ */
+.topbar-commit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--mono);
+  font-weight: 500;
+  background: rgba(251, 191, 36, 0.14);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.topbar-commit-btn:hover {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.55);
+  transform: translateY(-1px);
+}
+.topbar-commit-btn .commit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.8);
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+/* ══ COMBINED COMMIT MODAL ══ */
+.commit-modal {
+  width: 720px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.commit-modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.commit-modal-badge {
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+.commit-modal-body {
+  overflow-y: auto;
+  max-height: calc(85vh - 125px);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.commit-table-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.commit-table-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+.commit-table-group-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+}
+.commit-table-group-title .tbl-icon {
+  color: var(--accent);
+}
+.commit-table-items {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.commit-change-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  font-family: var(--mono);
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--surface2);
+}
+.change-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.change-badge.badge-insert {
+  background: rgba(74, 222, 128, 0.15);
+  color: #86efac;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+.change-badge.badge-update {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fef08a;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+.change-badge.badge-delete {
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+.commit-change-desc {
+  flex: 1;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.commit-change-diff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.diff-field {
+  color: var(--muted);
+  font-weight: 500;
+}
+.diff-old {
+  color: #fca5a5;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+.diff-arrow {
+  color: var(--faint);
+}
+.diff-new {
+  color: #86efac;
+  font-weight: 500;
+}
+.commit-sql-preview {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.commit-sql-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.commit-sql-header:hover {
+  background: var(--surface2);
+}
+.commit-sql-code {
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #e2e8f0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  background: #0d0f12;
+}
+.btn-danger-subtle {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font);
+}
+.btn-danger-subtle:hover:not(:disabled) {
+  background: var(--danger-dim);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.5);
+}
+

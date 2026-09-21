@@ -32,6 +32,12 @@
       </svg>
     </button>
 
+    <!-- Global staged commit review button (shown when changes exist) -->
+    <button class="topbar-commit-btn hidden" id="topbarCommitBtn" title="Review and commit staged changes">
+      <span class="commit-dot"></span>
+      <span id="topbarCommitText">Changes (0)</span>
+    </button>
+
     <!-- Connect / Disconnect button -->
     <button class="topbar-btn btn-connect" id="connectBtn">Connect</button>
   </header>
@@ -134,6 +140,33 @@
 
 
   <!-- ── SIDEBAR ── -->
+  <!-- ── COMBINED COMMIT MODAL (hidden by default) ── -->
+  <div class="modal-overlay hidden" id="commitModalOverlay">
+    <div class="modal commit-modal">
+      <div class="modal-header">
+        <div class="commit-modal-title-group">
+          <span class="modal-title">Staged Changes</span>
+          <span class="commit-modal-badge" id="commitModalBadge">0 changes</span>
+        </div>
+        <button class="modal-close" id="commitModalClose">✕</button>
+      </div>
+
+      <div class="modal-body commit-modal-body" id="commitModalBody">
+        <!-- Dynamic review list of tables and changes -->
+      </div>
+
+      <div class="modal-footer commit-modal-footer">
+        <div class="modal-footer-left">
+          <button class="btn-danger-subtle" id="commitModalDiscardBtn">Discard All</button>
+        </div>
+        <div class="modal-footer-right">
+          <button class="btn-ghost" id="commitModalCancelBtn">Close</button>
+          <button class="btn-primary" id="commitModalApplyBtn">Commit Changes →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <aside class="sidebar">
 
     <!-- Schema section -->
