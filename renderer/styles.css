@@ -628,12 +628,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   font-size: 11px;
   font-family: var(--mono);
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .panel-action-btn:hover:not(:disabled) {
   /* color: var(--text); */
   color: var(--danger);
   border-color: rgba(248,113,113,0.35);
+  color: var(--text);
+  border-color: var(--border);
   background: var(--surface3);
   transition: all 0.2s;
 }
@@ -644,8 +647,17 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 
 #addEntryBtn:hover:not(:disabled) {
+#addRowBtn:hover:not(:disabled) {
   color: var(--accent);
   border-color: rgba(74,222,128,0.35);
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+#removeEntryBtn:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
 }
 
 .panel-title {
