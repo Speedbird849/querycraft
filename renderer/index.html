@@ -183,61 +183,37 @@
         <div class="schema-grid" id="schemaGrid"></div>
       </div>
 
-      <!-- STATE: SQL / Results panel -->
+      <!-- STATE: Results area -->
       <div class="comparison-area hidden" id="comparisonArea">
-        <div class="comparison-grid">
-
-          <div class="comparison-col">
-            <div class="panel hidden" id="resultsPanel">
-              <div class="panel-head">
-                <span class="panel-title">Current Data</span>
-                <div class="panel-actions">
-                  <button class="panel-action-btn" id="addEntryBtn">+ Add Entry</button>
-                  <button class="panel-action-btn" id="removeEntryBtn" disabled>− Remove Selected</button>
-                  <button class="panel-action-btn hidden" id="saveEntryBtn">Save Entry</button>
-                  <button class="panel-action-btn hidden" id="cancelEntryBtn">Cancel</button>
-                </div>
-              </div>
-              <div class="results-scroll" id="resultsScroll">
-                <table id="resultsTable">
-                  <thead id="resultsHead"></thead>
-                  <tbody id="resultsBody"></tbody>
-                </table>
-              </div>
-              <div class="results-footer" id="resultsFooter"></div>
-            </div>
-
-            <div class="panel hidden" id="errorPanel">
-              <div class="panel-head">
-                <span class="panel-title">Error</span>
-                <span class="badge badge-blocked">blocked</span>
-              </div>
-              <div class="error-body" id="errorBody"></div>
-              <div class="error-actions">
-                <button class="panel-action-btn" id="errorReturnBtn">Return to Schema</button>
-              </div>
+        <div class="panel hidden" id="resultsPanel">
+          <div class="panel-head">
+            <span class="panel-title">Current Data</span>
+            <div class="panel-actions">
+              <button class="panel-action-btn" id="addRowBtn">+ Add Row</button>
+              <button class="panel-action-btn" id="removeEntryBtn" disabled>− Delete Selected</button>
+              <div class="panel-actions-sep hidden" id="stagedSep"></div>
+              <button class="panel-action-btn btn-discard hidden" id="discardChangesBtn">Discard</button>
+              <button class="panel-action-btn btn-commit hidden" id="commitChangesBtn">Commit (0)</button>
             </div>
           </div>
-
-          <div class="panel hidden" id="previewPanel">
-            <div class="panel-head">
-              <span class="panel-title">Pending Changes Preview</span>
-              <span class="badge badge-pending" id="previewBadge">pending</span>
-            </div>
-            <div class="preview-summary" id="previewSummary">Run an UPDATE, INSERT, or DELETE to preview changes.</div>
-            <div class="results-scroll">
-              <table>
-                <thead id="previewHead"></thead>
-                <tbody id="previewBody"></tbody>
-              </table>
-            </div>
-            <div class="results-footer" id="previewFooter"></div>
-            <div class="preview-actions">
-              <button class="btn-ghost" id="undoPreviewBtn">Undo</button>
-              <button class="btn-primary" id="confirmPreviewBtn">Confirm Commit</button>
-            </div>
+          <div class="results-scroll" id="resultsScroll">
+            <table id="resultsTable">
+              <thead id="resultsHead"></thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
           </div>
+          <div class="results-footer" id="resultsFooter"></div>
+        </div>
 
+        <div class="panel hidden" id="errorPanel">
+          <div class="panel-head">
+            <span class="panel-title">Error</span>
+            <span class="badge badge-blocked">error</span>
+          </div>
+          <div class="error-body" id="errorBody"></div>
+          <div class="error-actions">
+            <button class="panel-action-btn" id="errorReturnBtn">Return to Schema</button>
+          </div>
         </div>
       </div>
 

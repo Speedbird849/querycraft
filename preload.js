@@ -10,7 +10,6 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('db', {
   // Connect to a database
-  // connectionString: full connection URI
   connect: (connectionString) =>
     ipcRenderer.invoke('db:connect', { connectionString }),
 
@@ -30,17 +29,9 @@ contextBridge.exposeInMainWorld('db', {
   query: (sql) =>
     ipcRenderer.invoke('db:query', { sql }),
 
-  // Run a mutating SQL statement in a preview transaction
-  previewChange: (sql, tableHint) =>
-    ipcRenderer.invoke('db:preview-change', { sql, tableHint }),
-
-  // Commit the currently previewed transaction
-  commitPreview: () =>
-    ipcRenderer.invoke('db:commit-preview'),
-
-  // Rollback the currently previewed transaction
-  undoPreview: () =>
-    ipcRenderer.invoke('db:undo-preview'),
+  // Execute an atomic batch of SQL statements (INSERT/UPDATE/DELETE) in a transaction
+  applyChanges: (statements) =>
+    ipcRenderer.invoke('db:apply-changes', { statements }),
 
   // Listen for dropped or lost database connection events
   onConnectionLost: (callback) => {

@@ -1,6 +1,4 @@
 import {
-  isMutatingSql,
-  extractTargetTable,
   quoteTableIdentifier,
   quoteColumnIdentifier,
   toSqlLiteral,
@@ -45,25 +43,17 @@ const schemaOverviewTitle = document.getElementById('schemaOverviewTitle')
 const schemaGrid       = document.getElementById('schemaGrid')
 
 const comparisonArea = document.getElementById('comparisonArea')
-const comparisonGrid = document.querySelector('.comparison-grid')
 
-const resultsPanel   = document.getElementById('resultsPanel')
-const resultsScroll  = document.getElementById('resultsScroll')
-const resultsHead    = document.getElementById('resultsHead')
-const resultsBody    = document.getElementById('resultsBody')
-const resultsFooter  = document.getElementById('resultsFooter')
-const addEntryBtn    = document.getElementById('addEntryBtn')
-const removeEntryBtn = document.getElementById('removeEntryBtn')
-const saveEntryBtn   = document.getElementById('saveEntryBtn')
-const cancelEntryBtn = document.getElementById('cancelEntryBtn')
-
-const previewPanel   = document.getElementById('previewPanel')
-const previewSummary = document.getElementById('previewSummary')
-const previewHead    = document.getElementById('previewHead')
-const previewBody    = document.getElementById('previewBody')
-const previewFooter  = document.getElementById('previewFooter')
-const confirmPreviewBtn = document.getElementById('confirmPreviewBtn')
-const undoPreviewBtn = document.getElementById('undoPreviewBtn')
+const resultsPanel      = document.getElementById('resultsPanel')
+const resultsScroll     = document.getElementById('resultsScroll')
+const resultsHead       = document.getElementById('resultsHead')
+const resultsBody       = document.getElementById('resultsBody')
+const resultsFooter     = document.getElementById('resultsFooter')
+const addRowBtn         = document.getElementById('addRowBtn')
+const removeEntryBtn    = document.getElementById('removeEntryBtn')
+const stagedSep         = document.getElementById('stagedSep')
+const discardChangesBtn = document.getElementById('discardChangesBtn')
+const commitChangesBtn  = document.getElementById('commitChangesBtn')
 
 const errorPanel     = document.getElementById('errorPanel')
 const errorBody      = document.getElementById('errorBody')
@@ -74,7 +64,7 @@ const statusDriver   = document.getElementById('statusDriver')
 
 
 /* ══════════════════════════════════════════
-   2. STATE
+   2. STATE & STAGED CHANGES
 ══════════════════════════════════════════ */
 const PAGE_SIZE = 50
 
@@ -93,15 +83,36 @@ const state = {
   tables: [],
   columns: {},
   activeTable: null,
-  pendingPreview: null,
   resultFields: [],
   resultRows: [],
   selectedRowIndices: [],
   resultRightLabel: '',
-  entryDraftActive: false,
-  entryDraftValues: {},
   cellEditDraft: null,
 }
+
+const stagedChanges = {
+  updates: new Map(), // rowIndex -> Map(field -> newValue)
+  inserts: [],        // array of row objects { [field]: val }
+  deletes: new Set(), // Set of rowIndex
+}
+
+function getStagedCount() {
+  let updateCount = 0
+  for (const [rowIndex] of stagedChanges.updates) {
+    if (!stagedChanges.deletes.has(rowIndex)) {
+      updateCount++
+    }
+  }
+  return stagedChanges.inserts.length + stagedChanges.deletes.size + updateCount
+}
+
+function clearStagedChanges() {
+  stagedChanges.updates.clear()
+  stagedChanges.inserts = []
+  stagedChanges.deletes.clear()
+  updateStagedButtons()
+}
+
 
 /* ══════════════════════════════════════════
    3. CONNECTION MODAL
@@ -138,8 +149,8 @@ connectBtn.addEventListener('click', () => {
 
 refreshBtn.addEventListener('click', async () => {
   if (!state.connected) return
-  if (state.pendingPreview) {
-    setStatus('Finish the staged preview before refreshing schema.')
+  if (getStagedCount() > 0) {
+    setStatus('Commit or discard staged changes before refreshing schema.')
     return
   }
 
@@ -272,20 +283,17 @@ async function handleDisconnect() {
   state.tables = []
   state.columns = {}
   state.activeTable = null
-  state.pendingPreview = null
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
   state.resultRightLabel = ''
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
   state.cellEditDraft = null
+  clearStagedChanges()
 
   setConnected(false)
   schemaList.innerHTML = '<div class="sidebar-empty">No connection</div>'
 
   comparisonArea.classList.add('hidden')
-  previewPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
   schemaOverview.classList.add('hidden')
@@ -294,13 +302,9 @@ async function handleDisconnect() {
   resultsHead.innerHTML = ''
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
-  previewHead.innerHTML = ''
-  previewBody.innerHTML = ''
-  previewFooter.innerHTML = ''
-  previewSummary.textContent = 'Run an UPDATE, INSERT, or DELETE to preview changes.'
   queryInput.value = ''
   queryInput.style.height = 'auto'
-  refreshEntryButtons()
+  updateStagedButtons()
 
   setStatus('Disconnected')
 }
@@ -312,20 +316,17 @@ function handleConnectionLost(errorMessage) {
   state.tables = []
   state.columns = {}
   state.activeTable = null
-  state.pendingPreview = null
   state.resultFields = []
   state.resultRows = []
   state.selectedRowIndices = []
   state.resultRightLabel = ''
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
   state.cellEditDraft = null
+  clearStagedChanges()
 
   setConnected(false)
   schemaList.innerHTML = '<div class="sidebar-empty">Connection lost</div>'
 
   comparisonArea.classList.add('hidden')
-  previewPanel.classList.add('hidden')
   resultsPanel.classList.add('hidden')
   schemaOverview.classList.add('hidden')
   schemaGrid.innerHTML = ''
@@ -334,13 +335,9 @@ function handleConnectionLost(errorMessage) {
   resultsHead.innerHTML = ''
   resultsBody.innerHTML = ''
   resultsFooter.innerHTML = ''
-  previewHead.innerHTML = ''
-  previewBody.innerHTML = ''
-  previewFooter.innerHTML = ''
-  previewSummary.textContent = 'Run an UPDATE, INSERT, or DELETE to preview changes.'
   queryInput.value = ''
   queryInput.style.height = 'auto'
-  refreshEntryButtons()
+  updateStagedButtons()
 
   showPanels('error')
   errorBody.textContent = `Database connection lost: ${errorMessage || 'Connection terminated unexpectedly.'}`
@@ -505,8 +502,9 @@ function syncActiveSchemaTable() {
 function selectTable(tableName) {
   state.activeTable = tableName
   syncActiveSchemaTable()
+  clearStagedChanges()
   state.selectedRowIndices = []
-  refreshEntryButtons()
+  updateStagedButtons()
   const sql = `SELECT * FROM ${quoteTableIdentifier(tableName)};`
   queryInput.value = sql
   runQuery(sql)
@@ -528,7 +526,7 @@ function buildWindowSql(sql, limit, offset) {
 }
 
 /* ══════════════════════════════════════════
-   5. QUERY RUNNER
+   5. QUERY RUNNER & ACTIONS
 ══════════════════════════════════════════ */
 
 queryInput.addEventListener('input', () => {
@@ -548,37 +546,24 @@ queryInput.addEventListener('keydown', (e) => {
   }
 })
 
-addEntryBtn.addEventListener('click', handleAddEntry)
-removeEntryBtn.addEventListener('click', handleRemoveEntry)
-saveEntryBtn.addEventListener('click', handleSaveEntry)
-cancelEntryBtn.addEventListener('click', handleCancelEntry)
-confirmPreviewBtn.addEventListener('click', commitPreview)
-undoPreviewBtn.addEventListener('click', undoPreview)
+addRowBtn.addEventListener('click', handleAddRow)
+removeEntryBtn.addEventListener('click', handleDeleteSelected)
+discardChangesBtn.addEventListener('click', handleDiscardChanges)
+commitChangesBtn.addEventListener('click', handleCommitChanges)
 errorReturnBtn.addEventListener('click', returnToSchemaOverview)
 document.addEventListener('keydown', handleGlobalShortcuts)
+
 if (resultsScroll) {
   resultsScroll.addEventListener('scroll', handleResultsScroll)
 }
-refreshEntryButtons()
+updateStagedButtons()
 
 function handleGlobalShortcuts(e) {
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-
   if (e.key === 'Escape' && !errorPanel.classList.contains('hidden')) {
     e.preventDefault()
     returnToSchemaOverview()
     return
   }
-
-  if (e.key !== 'Enter') return
-  if (!state.pendingPreview) return
-
-  const activeTag = document.activeElement?.tagName
-  const isInputLike = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT' || document.activeElement?.isContentEditable
-  if (isInputLike) return
-
-  e.preventDefault()
-  void commitPreview()
 }
 
 function returnToSchemaOverview() {
@@ -593,18 +578,6 @@ function returnToSchemaOverview() {
 }
 
 async function runQuery(sql) {
-  if (isMutatingSql(sql)) {
-    await runMutationPreview(sql)
-    return
-  }
-
-  if (state.pendingPreview) {
-    showPanels('error')
-    errorBody.textContent = 'A pending preview is open. Confirm Commit or Undo before running another query.'
-    setStatus('Pending preview needs confirmation')
-    return
-  }
-
   setStatus('Running query…')
   showPanels('loading')
   const start = Date.now()
@@ -623,7 +596,6 @@ async function runQuery(sql) {
   let result = await window.db.query(execSql)
 
   if (paginatable && !result.ok) {
-    // If windowed query failed, fall back to running raw sql directly
     pagination.isPaginatable = false
     result = await window.db.query(sql)
   }
@@ -658,163 +630,232 @@ async function runQuery(sql) {
   }
 }
 
-async function runMutationPreview(sql) {
-  setStatus('Building preview…')
-  showPanels('loading')
+function getPrimaryKeyColumns(tableName) {
+  if (!tableName) return []
+  const cols = state.columns[tableName] || []
+  return cols.filter(col => col.is_pk)
+}
 
-  const tableHint = extractTargetTable(sql) || state.activeTable
-  const result = await window.db.previewChange(sql, tableHint)
+function updateStagedButtons() {
+  const hasTable = Boolean(state.activeTable)
+  const pkCount = getPrimaryKeyColumns(state.activeTable).length
+  const hasResultFields = state.resultFields.length > 0
+  const hasCellEdit = Boolean(state.cellEditDraft)
+  const count = getStagedCount()
 
-  if (!result.ok) {
+  addRowBtn.disabled = !hasTable || !hasResultFields || hasCellEdit
+
+  const hasDbRows = state.selectedRowIndices.some(idx => idx >= 0)
+  const canDelete = hasTable && state.selectedRowIndices.length > 0 && (!hasDbRows || pkCount > 0) && !hasCellEdit
+  removeEntryBtn.disabled = !canDelete
+
+  if (count > 0) {
+    stagedSep.classList.remove('hidden')
+    discardChangesBtn.classList.remove('hidden')
+    commitChangesBtn.classList.remove('hidden')
+    commitChangesBtn.textContent = `Commit (${count})`
+  } else {
+    stagedSep.classList.add('hidden')
+    discardChangesBtn.classList.add('hidden')
+    commitChangesBtn.classList.add('hidden')
+    commitChangesBtn.textContent = 'Commit (0)'
+  }
+}
+
+/* ══════════════════════════════════════════
+   6. STAGED MUTATIONS (INSERTS, UPDATES, DELETES)
+══════════════════════════════════════════ */
+
+function handleAddRow() {
+  if (!state.activeTable || state.resultFields.length === 0) return
+
+  const newRow = {}
+  for (const f of state.resultFields) {
+    newRow[f] = ''
+  }
+
+  stagedChanges.inserts.unshift(newRow)
+  state.selectedRowIndices = [-1]
+  updateStagedButtons()
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+
+  if (state.resultFields.length > 0) {
+    startCellEdit(-1, state.resultFields[0])
+  }
+}
+
+function handleDeleteSelected() {
+  if (!state.activeTable || state.selectedRowIndices.length === 0) return
+
+  const pkFields = getPrimaryKeyColumns(state.activeTable)
+  const hasDbRows = state.selectedRowIndices.some(idx => idx >= 0)
+
+  if (hasDbRows && pkFields.length === 0) {
     showPanels('error')
-    errorBody.textContent = result.error
-    setStatus('Preview failed')
+    errorBody.textContent = 'Deleting database rows requires at least one primary key column on the table.'
+    setStatus('Cannot delete without primary key')
     return
   }
 
-  state.pendingPreview = {
-    sql,
-    targetTable: result.targetTable || tableHint || null,
+  const insertedIndicesToRemove = []
+
+  for (const idx of state.selectedRowIndices) {
+    if (idx < 0) {
+      const insertIdx = -1 - idx
+      insertedIndicesToRemove.push(insertIdx)
+    } else {
+      if (stagedChanges.deletes.has(idx)) {
+        stagedChanges.deletes.delete(idx)
+      } else {
+        stagedChanges.deletes.add(idx)
+      }
+    }
   }
+
+  if (insertedIndicesToRemove.length > 0) {
+    insertedIndicesToRemove.sort((a, b) => b - a)
+    for (const i of insertedIndicesToRemove) {
+      stagedChanges.inserts.splice(i, 1)
+    }
+  }
+
   state.selectedRowIndices = []
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  state.cellEditDraft = null
-  refreshEntryButtons()
-
-  renderResults(result.beforeFields, result.beforeRows, null, 'current')
-  renderPreviewResults(result.afterFields, result.afterRows, result.affectedRows, result.targetTable)
-  showPanels('preview')
-  setStatus('Preview ready. Confirm Commit to persist, or Undo to rollback.')
+  updateStagedButtons()
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
-async function commitPreview() {
-  if (!state.pendingPreview) return
-  setPreviewButtonsDisabled(true)
-
-  const targetTable = state.pendingPreview.targetTable
-  const result = await window.db.commitPreview()
-  setPreviewButtonsDisabled(false)
-
-  if (!result.ok) {
-    showPanels('error')
-    errorBody.textContent = result.error
-    setStatus('Commit failed')
-    return
-  }
-
-  state.pendingPreview = null
-  state.selectedRowIndices = []
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  state.cellEditDraft = null
-  previewPanel.classList.add('hidden')
-  refreshEntryButtons()
-  setStatus('Changes committed')
-
-  await loadSchema()
-
-  if (targetTable) {
-    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)};`
-    queryInput.value = sql
-    runQuery(sql)
-  }
-}
-
-async function undoPreview() {
-  if (!state.pendingPreview) return
-  setPreviewButtonsDisabled(true)
-
-  const targetTable = state.pendingPreview.targetTable
-  const result = await window.db.undoPreview()
-  setPreviewButtonsDisabled(false)
-
-  if (!result.ok) {
-    showPanels('error')
-    errorBody.textContent = result.error
-    setStatus('Undo failed')
-    return
-  }
-
-  state.pendingPreview = null
-  state.selectedRowIndices = []
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  state.cellEditDraft = null
-  previewPanel.classList.add('hidden')
-  previewSummary.textContent = 'Preview rolled back. No changes were saved.'
-  refreshEntryButtons()
-  setStatus('Preview rolled back')
-
-  if (targetTable) {
-    const sql = `SELECT * FROM ${quoteTableIdentifier(targetTable)};`
-    queryInput.value = sql
-    runQuery(sql)
-  }
-}
-
-function setPreviewButtonsDisabled(disabled) {
-  confirmPreviewBtn.disabled = disabled
-  undoPreviewBtn.disabled = disabled
-}
-
-async function handleAddEntry() {
-  if (!state.activeTable || state.pendingPreview) return
-  if (!state.resultFields.length) return
-
-  state.cellEditDraft = null
-  state.entryDraftActive = true
-  state.entryDraftValues = {}
+function handleDiscardChanges() {
+  clearStagedChanges()
   state.selectedRowIndices = []
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
-  refreshEntryButtons()
+  setStatus('Staged changes discarded')
 }
 
-async function handleSaveEntry() {
-  if (!state.activeTable || state.pendingPreview || !state.entryDraftActive) return
+async function handleCommitChanges() {
+  const count = getStagedCount()
+  if (count === 0 || !state.activeTable) return
+
+  const pkFields = getPrimaryKeyColumns(state.activeTable)
+  if ((stagedChanges.updates.size > 0 || stagedChanges.deletes.size > 0) && pkFields.length === 0) {
+    showPanels('error')
+    errorBody.textContent = 'Commit failed: Updating or deleting rows requires at least one primary key column on the table.'
+    setStatus('Primary key required for updates/deletes')
+    return
+  }
 
   const tableRef = quoteTableIdentifier(state.activeTable)
-  const filledFields = state.resultFields.filter(field => {
-    const raw = state.entryDraftValues[field]
-    return raw !== undefined && String(raw).trim() !== ''
-  })
+  const statements = []
 
-  let sql = ''
-  if (filledFields.length === 0) {
-    sql = `INSERT INTO ${tableRef} DEFAULT VALUES;`
-  } else {
-    const columnsSql = filledFields.map(quoteColumnIdentifier).join(', ')
-    const valuesSql = filledFields.map(field => toSqlInputLiteral(state.entryDraftValues[field])).join(', ')
-    sql = `INSERT INTO ${tableRef} (${columnsSql}) VALUES (${valuesSql});`
+  // 1. DELETES
+  for (const rowIndex of stagedChanges.deletes) {
+    const row = state.resultRows[rowIndex]
+    if (!row) continue
+    const whereClauses = pkFields.map(pk => {
+      const pkValue = row[pk.column_name]
+      return `${quoteColumnIdentifier(pk.column_name)} = ${toSqlLiteral(pkValue)}`
+    })
+    statements.push(`DELETE FROM ${tableRef} WHERE ${whereClauses.join(' AND ')};`)
   }
 
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  refreshEntryButtons()
+  // 2. INSERTS
+  for (const row of stagedChanges.inserts) {
+    const filledFields = state.resultFields.filter(f => {
+      const val = row[f]
+      return val !== undefined && val !== null && String(val).trim() !== ''
+    })
 
-  queryInput.value = sql
-  await runQuery(sql)
-}
+    if (filledFields.length === 0) {
+      statements.push(`INSERT INTO ${tableRef} DEFAULT VALUES;`)
+    } else {
+      const colsSql = filledFields.map(quoteColumnIdentifier).join(', ')
+      const valsSql = filledFields.map(f => toSqlInputLiteral(row[f])).join(', ')
+      statements.push(`INSERT INTO ${tableRef} (${colsSql}) VALUES (${valsSql});`)
+    }
+  }
 
-function handleCancelEntry() {
-  if (!state.entryDraftActive) return
-  state.entryDraftActive = false
-  state.entryDraftValues = {}
-  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
-  refreshEntryButtons()
+  // 3. UPDATES
+  for (const [rowIndex, colMap] of stagedChanges.updates) {
+    if (stagedChanges.deletes.has(rowIndex)) continue
+    const row = state.resultRows[rowIndex]
+    if (!row || colMap.size === 0) continue
+
+    const setClauses = []
+    for (const [field, newVal] of colMap) {
+      setClauses.push(`${quoteColumnIdentifier(field)} = ${toSqlInputLiteral(newVal)}`)
+    }
+
+    const whereClauses = pkFields.map(pk => {
+      const pkValue = row[pk.column_name]
+      return `${quoteColumnIdentifier(pk.column_name)} = ${toSqlLiteral(pkValue)}`
+    })
+
+    statements.push(`UPDATE ${tableRef} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')};`)
+  }
+
+  if (statements.length === 0) {
+    clearStagedChanges()
+    return
+  }
+
+  commitChangesBtn.disabled = true
+  discardChangesBtn.disabled = true
+  setStatus(`Applying ${statements.length} changes…`)
+
+  try {
+    const result = await window.db.applyChanges(statements)
+    if (!result.ok) {
+      showPanels('error')
+      errorBody.textContent = `Transaction failed: ${result.error}`
+      setStatus('Commit failed')
+      return
+    }
+
+    clearStagedChanges()
+    setStatus(`Successfully committed ${result.count} changes`)
+
+    const sql = `SELECT * FROM ${quoteTableIdentifier(state.activeTable)};`
+    queryInput.value = sql
+    await runQuery(sql)
+  } catch (err) {
+    showPanels('error')
+    errorBody.textContent = `Commit error: ${err.message}`
+    setStatus('Commit failed')
+  } finally {
+    commitChangesBtn.disabled = false
+    discardChangesBtn.disabled = false
+    updateStagedButtons()
+  }
 }
 
 function startCellEdit(rowIndex, field) {
-  if (!state.activeTable || state.pendingPreview || state.entryDraftActive) return
+  if (!state.activeTable) return
+
+  if (rowIndex < 0) {
+    const insertIdx = -1 - rowIndex
+    const row = stagedChanges.inserts[insertIdx]
+    if (!row || !(field in row)) return
+    const originalValue = row[field]
+    state.cellEditDraft = {
+      rowIndex,
+      field,
+      value: originalValue === null || originalValue === undefined ? '' : String(originalValue),
+      originalValue,
+    }
+    renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+    return
+  }
 
   const row = state.resultRows[rowIndex]
   if (!row || !(field in row)) return
 
+  const stagedVal = stagedChanges.updates.get(rowIndex)?.get(field)
+  const currentValue = stagedVal !== undefined ? stagedVal : row[field]
   const originalValue = row[field]
+
   state.cellEditDraft = {
     rowIndex,
     field,
-    value: originalValue === null || originalValue === undefined ? '' : String(originalValue),
+    value: currentValue === null || currentValue === undefined ? '' : String(currentValue),
     originalValue,
   }
 
@@ -827,153 +868,139 @@ function cancelCellEdit() {
   renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
-async function saveCellEdit() {
-  if (!state.cellEditDraft || !state.activeTable || state.pendingPreview) return
+function saveCellEdit() {
+  if (!state.cellEditDraft || !state.activeTable) return
 
   const { rowIndex, field, value, originalValue } = state.cellEditDraft
-  const normalizedOriginal = originalValue === null || originalValue === undefined ? '' : String(originalValue)
-  if (value === normalizedOriginal) {
-    cancelCellEdit()
-    return
-  }
-
-  const pkFields = getPrimaryKeyColumns(state.activeTable)
-  if (pkFields.length === 0) {
-    showPanels('error')
-    errorBody.textContent = 'Inline edit requires at least one primary key column on the selected table.'
-    setStatus('Cannot edit without primary key')
-    cancelCellEdit()
-    return
-  }
-
-  const row = state.resultRows[rowIndex]
-  const whereClauses = pkFields.map(pk => {
-    const pkValue = row[pk.column_name]
-    return `${quoteColumnIdentifier(pk.column_name)} = ${toSqlLiteral(pkValue)}`
-  })
-
-  if (whereClauses.some(c => c.includes('= NULL'))) {
-    showPanels('error')
-    errorBody.textContent = `Inline edit failed: missing primary key value on selected row.`
-    setStatus('Cannot edit selected row')
-    cancelCellEdit()
-    return
-  }
-
-  const tableRef = quoteTableIdentifier(state.activeTable)
-  const targetCol = quoteColumnIdentifier(field)
-  const sql = `UPDATE ${tableRef} SET ${targetCol} = ${toSqlInputLiteral(value)} WHERE ${whereClauses.join(' AND ')};`
-
   state.cellEditDraft = null
-  queryInput.value = sql
-  await runQuery(sql)
-}
 
-async function handleRemoveEntry() {
-  if (!state.activeTable || state.pendingPreview || state.selectedRowIndices.length === 0) return
-
-  const pkFields = getPrimaryKeyColumns(state.activeTable)
-  if (pkFields.length === 0) {
-    showPanels('error')
-    errorBody.textContent = 'Remove requires at least one primary key column on the selected table.'
-    setStatus('Cannot remove without primary key')
+  if (rowIndex < 0) {
+    const insertIdx = -1 - rowIndex
+    if (stagedChanges.inserts[insertIdx]) {
+      stagedChanges.inserts[insertIdx][field] = value
+      updateStagedButtons()
+      renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+    }
     return
   }
 
-  // Handle composite or single PK by generating a DELETE statement with ORs or an IN clause
-  // For simplicity with composites, we will join them with OR if needed
-  const tableRef = quoteTableIdentifier(state.activeTable)
-  
-  const whereParts = state.selectedRowIndices.map(index => {
-    const row = state.resultRows[index]
-    const conditions = pkFields.map(pk => {
-      return `${quoteColumnIdentifier(pk.column_name)} = ${toSqlLiteral(row[pk.column_name])}`
-    })
-    return `(${conditions.join(' AND ')})`
-  })
+  const normalizedOriginal = originalValue === null || originalValue === undefined ? '' : String(originalValue)
+  const pkFields = getPrimaryKeyColumns(state.activeTable)
 
-  const sql = `DELETE FROM ${tableRef} WHERE ${whereParts.join(' OR ')};`
+  if (value === normalizedOriginal) {
+    if (stagedChanges.updates.has(rowIndex)) {
+      const rowMap = stagedChanges.updates.get(rowIndex)
+      rowMap.delete(field)
+      if (rowMap.size === 0) {
+        stagedChanges.updates.delete(rowIndex)
+      }
+    }
+    updateStagedButtons()
+    renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+    return
+  }
 
-  queryInput.value = sql
-  await runQuery(sql)
+  if (pkFields.length === 0) {
+    showPanels('error')
+    errorBody.textContent = 'Inline edit requires at least one primary key column on the table.'
+    setStatus('Cannot edit without primary key')
+    renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
+    return
+  }
+
+  if (!stagedChanges.updates.has(rowIndex)) {
+    stagedChanges.updates.set(rowIndex, new Map())
+  }
+  stagedChanges.updates.get(rowIndex).set(field, value)
+
+  updateStagedButtons()
+  renderResults(state.resultFields, state.resultRows, null, state.resultRightLabel)
 }
 
-function getPrimaryKeyColumns(tableName) {
-  const cols = state.columns[tableName] || []
-  return cols.filter(col => col.is_pk)
-}
-
-function refreshEntryButtons() {
-  const hasTable = Boolean(state.activeTable)
-  const hasPendingPreview = Boolean(state.pendingPreview)
-  const pkCount = getPrimaryKeyColumns(state.activeTable).length
-  const hasResultFields = state.resultFields.length > 0
-  const hasCellEdit = Boolean(state.cellEditDraft)
-  const canRemove = hasTable && pkCount > 0 && state.selectedRowIndices.length > 0 && !hasPendingPreview && !state.entryDraftActive && !hasCellEdit
-
-  addEntryBtn.disabled = !hasTable || hasPendingPreview || state.entryDraftActive || hasCellEdit || !hasResultFields
-  removeEntryBtn.disabled = !canRemove
-  saveEntryBtn.disabled = !state.entryDraftActive
-  cancelEntryBtn.disabled = !state.entryDraftActive
-  addEntryBtn.classList.toggle('hidden', state.entryDraftActive)
-  saveEntryBtn.classList.toggle('hidden', !state.entryDraftActive)
-  cancelEntryBtn.classList.toggle('hidden', !state.entryDraftActive)
-}
 
 /* ══════════════════════════════════════════
-   6. RESULTS RENDERER & DYNAMIC WINDOWING
+   7. RESULTS RENDERER & DYNAMIC WINDOWING
 ══════════════════════════════════════════ */
 
 function renderRowHtml(row, index, fields) {
   const isEditing = state.cellEditDraft && state.cellEditDraft.rowIndex === index
   const isSelected = state.selectedRowIndices.includes(index)
+  const isDeleted = stagedChanges.deletes.has(index)
+  const rowUpdates = stagedChanges.updates.get(index)
 
-  return `<tr class="result-row${isSelected ? ' selected' : ''}" data-row-index="${index}">` + fields.map(f => {
+  let rowClasses = 'result-row'
+  if (isSelected) rowClasses += ' selected'
+  if (isDeleted) rowClasses += ' row-deleted'
+
+  return `<tr class="${rowClasses}" data-row-index="${index}">` + fields.map(f => {
     if (isEditing && state.cellEditDraft.field === f) {
       return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
     }
 
-    const val = row[f]
-    if (val === null || val === undefined) return `<td class="result-cell" data-field="${escapeHtml(f)}"><span class="null-value">NULL</span></td>`
-    return `<td class="result-cell" data-field="${escapeHtml(f)}">${escapeHtml(String(val))}</td>`
+    const isDirty = Boolean(rowUpdates && rowUpdates.has(f))
+    const val = isDirty ? rowUpdates.get(f) : row[f]
+    const origVal = row[f]
+
+    let cellClass = 'result-cell'
+    if (isDirty) cellClass += ' cell-dirty'
+
+    let titleAttr = ''
+    if (isDirty) {
+      titleAttr = ` title="Original: ${origVal === null || origVal === undefined ? 'NULL' : escapeHtml(String(origVal))}"`
+    }
+
+    if (val === null || val === undefined) {
+      return `<td class="${cellClass}" data-field="${escapeHtml(f)}"${titleAttr}><span class="null-value">NULL</span></td>`
+    }
+    return `<td class="${cellClass}" data-field="${escapeHtml(f)}"${titleAttr}>${escapeHtml(String(val))}</td>`
   }).join('') + '</tr>'
 }
 
 function renderResults(fields, rows, ms, rightLabel = null) {
   state.resultFields = fields
   state.resultRows = rows
-  state.selectedRowIndices = []
   state.resultRightLabel = rightLabel ?? (typeof ms === 'number' ? `${ms}ms` : '')
 
-  if (state.cellEditDraft && !rows[state.cellEditDraft.rowIndex]) {
+  if (state.cellEditDraft && state.cellEditDraft.rowIndex >= 0 && !rows[state.cellEditDraft.rowIndex]) {
     state.cellEditDraft = null
   }
 
   resultsHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
 
+  const insertedRowsHtml = stagedChanges.inserts.map((row, insertIdx) => {
+    const virtIndex = -1 - insertIdx
+    const isEditing = state.cellEditDraft && state.cellEditDraft.rowIndex === virtIndex
+    const isSelected = state.selectedRowIndices.includes(virtIndex)
+
+    let rowClasses = 'result-row row-inserted'
+    if (isSelected) rowClasses += ' selected'
+
+    return `<tr class="${rowClasses}" data-row-index="${virtIndex}">` + fields.map(f => {
+      if (isEditing && state.cellEditDraft.field === f) {
+        return `<td class="result-cell editing" data-field="${escapeHtml(f)}"><input class="cell-edit-input" data-field="${escapeHtml(f)}" value="${escapeHtml(state.cellEditDraft.value)}" /></td>`
+      }
+      const val = row[f]
+      const displayVal = (val === '' || val === null || val === undefined)
+        ? '<span class="null-value">[NEW]</span>'
+        : escapeHtml(String(val))
+      return `<td class="result-cell" data-field="${escapeHtml(f)}">${displayVal}</td>`
+    }).join('') + '</tr>'
+  }).join('')
+
   const dataRowsHtml = rows.map((row, index) =>
     renderRowHtml(row, index, fields)
   ).join('')
 
-  let draftRowHtml = ''
-  if (state.entryDraftActive) {
-    draftRowHtml = '<tr class="entry-row">' + fields.map(field => {
-      const val = state.entryDraftValues[field] ?? ''
-      return `<td><input class="entry-cell-input" data-field="${escapeHtml(field)}" value="${escapeHtml(val)}" placeholder="${escapeHtml(field)}" /></td>`
-    }).join('') + '</tr>'
-  }
+  resultsBody.innerHTML = insertedRowsHtml + dataRowsHtml
 
-  resultsBody.innerHTML = draftRowHtml + dataRowsHtml
-
-  if (rows.length === 0) {
+  if (stagedChanges.inserts.length === 0 && rows.length === 0) {
     const colSpan = Math.max(fields.length, 1)
     resultsBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
   }
 
   updateFooterStatus()
-  bindEntryRowInputs()
   bindCellEditInput()
-  refreshEntryButtons()
+  updateStagedButtons()
 }
 
 function appendResults(newRows) {
@@ -986,7 +1013,7 @@ function appendResults(newRows) {
 
   resultsBody.insertAdjacentHTML('beforeend', newRowsHtml)
   updateFooterStatus()
-  refreshEntryButtons()
+  updateStagedButtons()
 }
 
 function updateFooterStatus() {
@@ -1070,13 +1097,12 @@ async function maybeFillViewport() {
   }
 }
 
-// Delegated row selection on resultsBody
 resultsBody.addEventListener('click', (e) => {
   const cellEl = e.target.closest('.result-cell')
   if (!cellEl) return
   const rowEl = cellEl.closest('.result-row')
   if (!rowEl) return
-  if (state.pendingPreview || !state.activeTable || state.entryDraftActive || state.cellEditDraft) return
+  if (!state.activeTable || state.cellEditDraft) return
 
   const rowIndex = Number(rowEl.dataset.rowIndex)
   if (!Number.isInteger(rowIndex)) return
@@ -1098,13 +1124,10 @@ resultsBody.addEventListener('click', (e) => {
     el.classList.toggle('selected', state.selectedRowIndices.includes(idx))
   })
 
-  refreshEntryButtons()
+  updateStagedButtons()
 })
 
-// Delegated double-click cell editing on resultsBody
 resultsBody.addEventListener('dblclick', (e) => {
-  if (state.pendingPreview || state.entryDraftActive) return
-
   const cellEl = e.target.closest('.result-cell')
   if (!cellEl) return
 
@@ -1120,29 +1143,6 @@ resultsBody.addEventListener('dblclick', (e) => {
   startCellEdit(rowIndex, field)
 })
 
-function bindEntryRowInputs() {
-  const inputs = resultsBody.querySelectorAll('.entry-cell-input')
-  inputs.forEach(input => {
-    input.addEventListener('input', (e) => {
-      const field = e.currentTarget.dataset.field
-      state.entryDraftValues[field] = e.currentTarget.value
-    })
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        void handleSaveEntry()
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        handleCancelEntry()
-      }
-    })
-  })
-
-  if (inputs.length > 0) inputs[0].focus()
-}
-
 function bindCellEditInput() {
   const input = resultsBody.querySelector('.cell-edit-input')
   if (!input) return
@@ -1155,10 +1155,10 @@ function bindCellEditInput() {
     autoSizeCellEditInput(e.currentTarget)
   })
 
-  input.addEventListener('keydown', async (e) => {
+  input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      await saveCellEdit()
+      saveCellEdit()
       return
     }
 
@@ -1169,9 +1169,9 @@ function bindCellEditInput() {
     }
   })
 
-  input.addEventListener('blur', async () => {
+  input.addEventListener('blur', () => {
     if (cancelled) return
-    await saveCellEdit()
+    saveCellEdit()
   })
 
   autoSizeCellEditInput(input)
@@ -1199,46 +1199,16 @@ function autoSizeCellEditInput(input) {
   input.style.maxWidth = `${maxWidth}px`
 }
 
-function renderPreviewResults(fields, rows, affectedRows, targetTable) {
-  previewHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '</tr>'
-
-  previewBody.innerHTML = rows.map(row =>
-    '<tr>' + fields.map(f => {
-      const val = row[f]
-      if (val === null || val === undefined) return '<td><span class="null-value">NULL</span></td>'
-      return `<td>${escapeHtml(String(val))}</td>`
-    }).join('') + '</tr>'
-  ).join('')
-
-  if (rows.length === 0) {
-    const colSpan = Math.max(fields.length, 1)
-    previewBody.innerHTML = `<tr><td colspan="${colSpan}"><span class="null-value">No rows</span></td></tr>`
-  }
-
-  previewSummary.textContent = targetTable
-    ? `Previewing staged changes on ${escapeHtml(targetTable)}.`
-    : 'Previewing staged changes.'
-  previewFooter.innerHTML = `<span>${rows.length} rows</span><span>${affectedRows || 0} affected</span>`
-}
-
 function showPanels(mode) {
-  setComparisonLayout(false)
   emptyState.classList.add('hidden')
   schemaOverview.classList.add('hidden')
   comparisonArea.classList.add('hidden')
   resultsPanel.classList.add('hidden')
-  previewPanel.classList.add('hidden')
   errorPanel.classList.add('hidden')
 
   if (mode === 'results') {
     comparisonArea.classList.remove('hidden')
     resultsPanel.classList.remove('hidden')
-  } else if (mode === 'preview') {
-    setComparisonLayout(true)
-    comparisonArea.classList.remove('hidden')
-    resultsPanel.classList.remove('hidden')
-    previewPanel.classList.remove('hidden')
-    triggerPreviewPanelAnimation()
   } else if (mode === 'error') {
     comparisonArea.classList.remove('hidden')
     errorPanel.classList.remove('hidden')
@@ -1249,19 +1219,8 @@ function showPanels(mode) {
   }
 }
 
-function setComparisonLayout(showPreview) {
-  if (!comparisonGrid) return
-  comparisonGrid.classList.toggle('preview-active', showPreview)
-}
-
-function triggerPreviewPanelAnimation() {
-  previewPanel.classList.remove('preview-animate')
-  void previewPanel.offsetWidth
-  previewPanel.classList.add('preview-animate')
-}
-
 /* ══════════════════════════════════════════
-   7. UTILITY
+   8. UTILITY
 ══════════════════════════════════════════ */
 
 function setStatus(msg) {

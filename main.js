@@ -3,7 +3,6 @@ const path = require('path')
 
 // ─── DB state ───────────────────────────────────────────────────────────────
 let activeConnection = null   // holds the live pg client
-let pendingPreview   = false  // true when a preview transaction is open
 
 // ─── Window ─────────────────────────────────────────────────────────────────
 function createWindow() {
@@ -48,7 +47,6 @@ ipcMain.handle('db:connect', async (_event, { connectionString }) => {
     client.on('error', (err) => {
       console.error('Unexpected DB error:', err)
       activeConnection = null
-      pendingPreview = false
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
           win.webContents.send('db:connection-lost', { error: err?.message || String(err) })
@@ -122,64 +120,19 @@ ipcMain.handle('db:query', async (_event, { sql }) => {
   }
 })
 
-ipcMain.handle('db:preview-change', async (_event, { sql, tableHint }) => {
+ipcMain.handle('db:apply-changes', async (_event, { statements }) => {
   if (!activeConnection) return { ok: false, error: 'Not connected' }
-  if (!isMutatingSql(sql)) return { ok: false, error: 'Only mutating SQL can be previewed.' }
+  if (!Array.isArray(statements) || statements.length === 0) return { ok: true, count: 0 }
 
   try {
-    if (pendingPreview) {
-      await activeConnection.query('ROLLBACK')
-      pendingPreview = false
-    }
-
-    const targetTable = (tableHint || extractTargetTable(sql) || '').trim()
-    const before = targetTable ? await safeFetchTableSnapshot(targetTable) : { fields: [], rows: [] }
-
     await activeConnection.query('BEGIN')
-    pendingPreview = true
-
-    const execResult = await executeSql(sql)
-    const after = targetTable ? await safeFetchTableSnapshot(targetTable) : { fields: [], rows: [] }
-
-    return {
-      ok: true,
-      pending: true,
-      targetTable,
-      affectedRows: execResult.rowCount,
-      beforeFields: before.fields,
-      beforeRows: before.rows,
-      afterFields: after.fields,
-      afterRows: after.rows,
+    for (const sql of statements) {
+      await activeConnection.query(sql)
     }
-  } catch (err) {
-    if (pendingPreview) {
-      try { await activeConnection.query('ROLLBACK') } catch (_) {}
-      pendingPreview = false
-    }
-    return { ok: false, error: err.message }
-  }
-})
-
-ipcMain.handle('db:commit-preview', async () => {
-  if (!activeConnection) return { ok: false, error: 'Not connected' }
-  if (!pendingPreview) return { ok: false, error: 'No pending preview to commit.' }
-  try {
     await activeConnection.query('COMMIT')
-    pendingPreview = false
-    return { ok: true }
+    return { ok: true, count: statements.length }
   } catch (err) {
-    return { ok: false, error: err.message }
-  }
-})
-
-ipcMain.handle('db:undo-preview', async () => {
-  if (!activeConnection) return { ok: false, error: 'Not connected' }
-  if (!pendingPreview) return { ok: true }
-  try {
-    await activeConnection.query('ROLLBACK')
-    pendingPreview = false
-    return { ok: true }
-  } catch (err) {
+    try { await activeConnection.query('ROLLBACK') } catch (_) {}
     return { ok: false, error: err.message }
   }
 })
@@ -188,62 +141,9 @@ ipcMain.handle('db:undo-preview', async () => {
 async function disconnectCurrent() {
   if (!activeConnection) return
   try {
-    if (pendingPreview) {
-      try { await activeConnection.query('ROLLBACK') } catch (_) {}
-      pendingPreview = false
-    }
     await activeConnection.end()
   } catch (_) {}
   activeConnection = null
-}
-
-function isMutatingSql(sql) {
-  return /^\s*(insert|update|delete|alter|drop|truncate|create)\b/i.test(sql)
-}
-
-function extractTargetTable(sql) {
-  const patterns = [
-    /^\s*update\s+([`"\w.]+)/i,
-    /^\s*insert\s+into\s+([`"\w.]+)/i,
-    /^\s*delete\s+from\s+([`"\w.]+)/i,
-    /^\s*alter\s+table\s+([`"\w.]+)/i,
-    /^\s*truncate\s+table\s+([`"\w.]+)/i,
-    /^\s*drop\s+table\s+([`"\w.]+)/i,
-    /^\s*create\s+table\s+([`"\w.]+)/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = sql.match(pattern)
-    if (match && match[1]) return match[1].replace(/["`]/g, '')
-  }
-  return ''
-}
-
-function quoteIdentifier(tableName) {
-  const parts = tableName.split('.').map(p => p.trim()).filter(Boolean)
-  if (parts.length === 0) throw new Error('Unable to infer target table for preview.')
-  return parts.map(p => `"${p.replace(/"/g, '""')}"`).join('.')
-}
-
-async function fetchTableSnapshot(tableName, limit = 500) {
-  const tableRef = quoteIdentifier(tableName)
-  return executeSql(`SELECT * FROM ${tableRef} LIMIT ${limit}`)
-}
-
-async function safeFetchTableSnapshot(tableName) {
-  try {
-    return await fetchTableSnapshot(tableName)
-  } catch (err) {
-    if (isMissingTableError(err)) {
-      return { fields: [], rows: [], rowCount: 0 }
-    }
-    throw err
-  }
-}
-
-function isMissingTableError(err) {
-  const msg = String(err?.message || '').toLowerCase()
-  return msg.includes('does not exist') || msg.includes('unknown table')
 }
 
 async function executeSql(sql) {
